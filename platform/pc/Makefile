@@ -192,6 +192,12 @@ SRCS-kernel.elf+= \
 	$(SRCDIR)/kernel/tracelog.c
 endif
 
+ifeq ($(TRACE),lockstats)
+CFLAGS+= -DLOCK_STATS
+SRCS-kernel.elf+= \
+	$(SRCDIR)/kernel/lockstats.c
+endif
+
 ifeq ($(MANAGEMENT),telnet)
 CFLAGS+= -DMANAGEMENT_TELNET
 SRCS-kernel.elf+= \

@@ -76,6 +76,11 @@ struct cpuinfo {
 #ifdef CONFIG_TRACELOG
     void *tracelog_buffer;
 #endif
+#ifdef LOCK_STATS
+    boolean lock_stats_disable;
+    table lock_stats_table;
+    heap lock_stats_heap;
+#endif
 };
 
 extern vector cpuinfos;
