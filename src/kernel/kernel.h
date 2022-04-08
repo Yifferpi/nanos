@@ -128,6 +128,45 @@ _IRQSAFE_1(void *, queue_peek, queue);
 #undef _IRQSAFE_1
 #undef _IRQSAFE_2
 
+static inline u64 spin_lock_irq(spinlock l)
+{
+    u64 flags = irq_disable_save();
+    spin_lock(l);
+    return flags;
+}
+
+static inline void spin_unlock_irq(spinlock l, u64 flags)
+{
+    spin_unlock(l);
+    irq_restore(flags);
+}
+
+static inline u64 spin_wlock_irq(rw_spinlock l)
+{
+    u64 flags = irq_disable_save();
+    spin_wlock(l);
+    return flags;
+}
+
+static inline void spin_wunlock_irq(rw_spinlock l, u64 flags)
+{
+    spin_wunlock(l);
+    irq_restore(flags);
+}
+
+static inline u64 spin_rlock_irq(rw_spinlock l)
+{
+    u64 flags = irq_disable_save();
+    spin_rlock(l);
+    return flags;
+}
+
+static inline void spin_runlock_irq(rw_spinlock l, u64 flags)
+{
+    spin_runlock(l);
+    irq_restore(flags);
+}
+
 /* Acquires 2 locks, guarding against potential deadlock resulting from a concurrent thread trying
  * to acquire the same locks. */
 static inline void spin_lock_2(spinlock l1, spinlock l2)
