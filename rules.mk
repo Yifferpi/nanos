@@ -33,6 +33,9 @@ endif
 ifeq ($(PLATFORM),riscv-virt)
 ARCH?=		riscv64
 endif
+ifeq ($(PLATFORM),seccells-virt)
+ARCH?=		riscv64
+endif
 ifneq ($(ARCH),$(shell uname -m))
 CROSS_COMPILE?=	$(ARCH)-linux-gnu-
 endif
