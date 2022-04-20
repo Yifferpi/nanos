@@ -13,7 +13,7 @@ SRCS-kernel.elf= \
 	$(SRCDIR)/riscv64/elf64.c \
 	$(SRCDIR)/riscv64/kernel_machine.c \
 	$(SRCDIR)/riscv64/interrupt.c \
-	$(SRCDIR)/riscv64/page.c \
+	$(SRCDIR)/riscv64/seccells.c \
 	$(SRCDIR)/riscv64/plic.c \
 	$(SRCDIR)/riscv64/serial.c \
 	$(SRCDIR)/riscv64/unix_machine.c \
@@ -32,7 +32,7 @@ SRCS-kernel.elf= \
 	$(SRCDIR)/kernel/locking_heap.c \
 	$(SRCDIR)/kernel/log.c \
 	$(SRCDIR)/kernel/mutex.c \
-	$(SRCDIR)/kernel/page.c \
+	$(SRCDIR)/kernel/seccells.c \
 	$(SRCDIR)/kernel/page_backed_heap.c \
 	$(SRCDIR)/kernel/pagecache.c \
 	$(SRCDIR)/kernel/pci.c \
