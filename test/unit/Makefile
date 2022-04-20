@@ -15,8 +15,9 @@ PROGRAMS= \
 	table_test \
 	tuple_test \
 	udp_test \
-	vector_test
-SKIP_TEST=	network_test udp_test
+	vector_test \
+	seccells_test
+SKIP_TEST=	network_test udp_test pqueue_test
 
 SRCS-bitmap_test= \
 	$(CURDIR)/bitmap_test.c \
@@ -116,6 +117,12 @@ SRCS-vector_test= \
 	$(CURDIR)/vector_test.c \
 	$(RUNTIME)\
 	$(SRCDIR)/unix_process/unix_process_runtime.c
+
+SRCS-seccells_test= \
+	$(CURDIR)/seccells_test.c \
+	$(RUNTIME)\
+	$(SRCDIR)/unix_process/unix_process_runtime.c
+LIBS-seccells_test=	-lcheck -lsubunit -lm -lrt -lpthread
 
 
 CFLAGS+=	-O3 \
