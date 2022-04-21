@@ -1,8 +1,18 @@
 #define PAGEMASK MASK(PAGELOG)
 
+#ifdef UNITTESTING
+typedef struct pageflags {
+    u64 w;
+} pageflags;
+#endif
+
 extern u64 tablebase;
 
 static inline u64 get_pagetable_base(u64 vaddr)
+{
+    return tablebase;
+}
+static inline u64 get_permissiontable_base(u64 vaddr)
 {
     return tablebase;
 }
@@ -20,21 +30,93 @@ static inline u64 get_pagetable_base(u64 vaddr)
 #define CELL_USER       U64_FROM_BIT(4)
 #define CELL_GLOBAL     U64_FROM_BIT(5)
 #define CELL_DIRTY      U64_FROM_BIT(7)
+
+#define PAGE_VALID      U64_FROM_BIT(0)
+#define PAGE_READABLE   U64_FROM_BIT(1)
+#define PAGE_WRITABLE   U64_FROM_BIT(2)
+#define PAGE_EXEC       U64_FROM_BIT(3)
+#define PAGE_USER       U64_FROM_BIT(4)
+#define PAGE_GLOBAL     U64_FROM_BIT(5)
+#define PAGE_DIRTY      U64_FROM_BIT(7)
 #define PAGE_NO_BLOCK   U64_FROM_BIT(8) // RSW[0]
 #define PAGE_DEFAULT_PERMISSIONS (PAGE_READABLE)
 #define PAGE_PROT_FLAGS (PAGE_USER | PAGE_READABLE)
 
 /* Seccells definitions */
-typedef u128 cell_desc;
-typedef struct pt_meta {
-    u32     N;  // # of cells
-    u32     M;  // # of security divisions
-    u32     T;  // # of permission cache lines per security division
-} pt_meta;
 
-#define CELL_DESC_SIZE 16 // 16 bytes per cell description
-#define CELL_PERM_SIZE  1 // 1 byte of permission per cell
+/* Note: struct definitions are theoretically not necessary but are
+done to emphasize that one should interface with the entries
+through helper functions.
+*/
 
+/*
+Description field:
+V   | Pbase     | Vbound     | Vbase
+127 | (116:72]  | (72:36]   | (36:0]
+*/
+#define HALF_DESC_SHIFT 64
+typedef struct rt_desc {
+    u64     upper;
+    u64     lower;
+} rt_desc;
+
+/*
+Meta field:
+N       | M         | T
+(96:64] | (64:32]   | (32:0]
+where:
+    N := # of cells
+    M := # of security divisions
+    T := # of permission cache lines per security division
+*/
+typedef struct rt_meta {
+    u128    w;
+} rt_meta;
+
+
+/* Range table constants (we call it RT so as not to confuse it with PT pagetable)
+these are more or less directly taken from the patched SecureCells qemu 
+*/
+#define CELL_DESC_SZ  16 // 16 bytes per cell description
+#define CELL_PERM_SZ  1 // 1 byte of permission per cell
+#define RT_V          0x0000000000000001ull // Valid
+#define RT_R          0x0000000000000002ull // Read
+#define RT_W          0x0000000000000004ull // Write
+#define RT_X          0x0000000000000008ull // Execute
+#define RT_G          0x0000000000000020ull // Global
+#define RT_A          0x0000000000000040ull // Accessed
+#define RT_D          0x0000000000000080ull // Dirty
+
+/* 
+*/
+/* Shifts */
+#define RT_VA_START_SHIFT 0            // in 128-bit cell desc
+#define RT_VA_END_SHIFT   36           // in 128-bit cell desc
+#define RT_PA_SHIFT       72           // in 128-bit cell desc
+#define RT_VAL_SHIFT      127          // in 128-bit cell desc
+#define RT_META_N_SHIFT   96           // in 128-bit metacell desc
+#define RT_META_M_SHIFT   64           // in 128-bit metacell desc
+#define RT_META_T_SHIFT   32           // in 128-bit metacell desc
+#define RT_PROT_SHIFT     1            // in 8-bit permissions
+/* Sizes */
+#define RT_VFN_SIZE       36
+#define RT_PFN_SIZE       44
+#define RT_META_N_SIZE    32
+#define RT_META_M_SIZE    32
+#define RT_META_T_SIZE    32
+/* Masks */
+#define RT_VA_MASK        ((1ull << RT_VFN_SIZE) - 1) // 36 bits of VA
+#define RT_PA_MASK        ((1ull << RT_PFN_SIZE) - 1) // 44 bits of PA
+#define RT_VAL_MASK       1ull // 1 bit for valid marker
+#define RT_META_N_MASK    ((1ull << RT_META_N_SIZE) - 1) // 32 bits for number of cells
+#define RT_META_M_MASK    ((1ull << RT_META_M_SIZE) - 1) // 32 bits for number of SecDivs
+#define RT_META_T_MASK    ((1ull << RT_META_T_SIZE) - 1) // 32 bits for number of permission lines per SecDiv
+/* Special */
+#define RT_PERMS          (RT_R | RT_W | RT_X)
+#define RT_ID_ANY         0xffff
+#define RT_ID_SUPERVISOR  0x0000
+
+/* legacy */
 #define PAGE_FLAGS_MASK 0x3ff
 
 #define PT_FIRST_LEVEL 0
@@ -49,8 +131,45 @@ typedef struct pt_meta {
 
 #define Sv39 (8ull<<60)
 #define Sv48 (9ull<<60)
+#define Seccells48 (15ull<<60)  // MMU MODE designated for custom use
 
 #define IS_LEAF(e) (((e) & (PAGE_EXEC|PAGE_READABLE)) != 0)
+
+static inline u64 get_pbase(rt_desc desc)
+{
+    return (u64) (desc.upper >> (RT_PA_SHIFT - HALF_DESC_SHIFT)) & RT_PA_MASK;
+}
+static inline u64 get_vbase(rt_desc desc)
+{
+    return (u64) (desc.lower >> RT_VA_START_SHIFT) & RT_VA_MASK;
+}
+static inline u64 get_vbound(rt_desc desc)
+{
+    u64 lo = (desc.lower >> RT_VA_END_SHIFT);
+    u64 up = (desc.upper << (HALF_DESC_SHIFT - RT_VA_END_SHIFT)) & RT_VA_MASK;
+    return up | lo;
+}
+static inline void set_pbase(rt_desc *desc, u64 pbase) {
+    u64 addr = pbase << (RT_PA_SHIFT - HALF_DESC_SHIFT);
+    u64 mask = RT_PA_MASK << (RT_PA_SHIFT - HALF_DESC_SHIFT);
+    desc->upper = addr | (desc->upper & ~mask);
+    //return (rt_desc){.upper = addr | (desc.upper & ~mask)};
+}
+static inline void set_vbase(rt_desc *desc, u64 vbase) {
+    desc->lower = (desc->lower & ~RT_VA_MASK) | (vbase & RT_VA_MASK);
+    //return (rt_desc){.lower = (desc.lower & ~RT_VA_MASK) | (vbase & RT_VA_MASK)};
+}
+static inline void set_vbound(rt_desc *desc, u64 vbound) {
+    int lower_bits = HALF_DESC_SHIFT - RT_VA_END_SHIFT;
+    int upper_bits = RT_VFN_SIZE - lower_bits - 1;
+    u64 upper_mask = (1ull << (upper_bits+1)) - 1;
+    u64 lower_mask = (1ull << (lower_bits+1)) - 1;
+    u64 put_in_upper = (vbound >> lower_bits) & upper_mask;
+    u64 put_in_lower = vbound & lower_mask;
+    desc->upper = ((desc->upper & ~upper_mask) | put_in_upper);
+    desc->lower = (desc->lower & ~(lower_mask << RT_VA_END_SHIFT)) | (put_in_lower << RT_VA_END_SHIFT);
+}
+
 
 static inline pageflags pageflags_memory(void)
 {

@@ -17,7 +17,7 @@ PROGRAMS= \
 	udp_test \
 	vector_test \
 	seccells_test
-SKIP_TEST=	network_test udp_test pqueue_test
+SKIP_TEST=	network_test udp_test pqueue_test queue_test table_test rbtree_test
 
 SRCS-bitmap_test= \
 	$(CURDIR)/bitmap_test.c \
@@ -122,10 +122,12 @@ SRCS-seccells_test= \
 	$(CURDIR)/seccells_test.c \
 	$(RUNTIME)\
 	$(SRCDIR)/unix_process/unix_process_runtime.c
-LIBS-seccells_test=	-lcheck -lsubunit -lm -lrt -lpthread
+LIBS-seccells_test=	-lcheck -lsubunit -lm -lrt -lpthread 
 
 
 CFLAGS+=	-O3 \
+		-D UNITTESTING \
+		-I$(SRCDIR)/riscv64 \
 		-I$(ARCHDIR) \
 		-I$(SRCDIR) \
 		-I$(SRCDIR)/http \
