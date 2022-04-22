@@ -2,15 +2,11 @@
 #include <runtime.h>
 #include <stdlib.h>
 #include <check.h>
-#include <seccells_machine.h>
 #include <stdio.h>
-//#include <seccells.h>
+#include <seccells.h>
 
-START_TEST (test_one) {
-    ck_assert(true);
-}
-END_TEST
 #define print_u64(val, msg) printf("%s: %016lx\n", msg, (long unsigned int) val)
+#define print_u8(val, msg) printf("%s: %02x\n", msg, (unsigned char) val)
 #define print_desc(d, msg) printf("%s: %016lx%016lx\n", msg, (long unsigned int) d.upper, (long unsigned int) d.lower)
 
 START_TEST (test_getDescFields) {
@@ -58,6 +54,38 @@ START_TEST (test_setDescFields) {
 
 }
 END_TEST
+/* RSW | A | G | U | X | W | R | V */
+START_TEST (test_cellflags) {
+    cellflags tmp;
+    tmp.w = 0x00;
+    tmp = cellflags_writable(tmp);
+    ck_assert(tmp.w == 0x04); // -W-
+    tmp = cellflags_exec(tmp);
+    ck_assert(tmp.w == 0x0c); // XW-
+    tmp = cellflags_writable(tmp);  //omnipotency?
+    tmp = cellflags_exec(tmp);
+    ck_assert(tmp.w == 0x0c); // XW-
+    tmp = cellflags_readonly(tmp);
+    ck_assert(tmp.w == 0x08); // X--
+    tmp = cellflags_noexec(tmp);
+    ck_assert(tmp.w == 0x00);
+
+}
+END_TEST
+START_TEST (test_check_cellflags) {
+    cellflags tmp;
+    tmp.w = 0x00; // ---
+    ck_assert(cellflags_is_noexec(tmp));
+    ck_assert(!cellflags_is_exec(tmp));
+    ck_assert(cellflags_is_readonly(tmp));
+    ck_assert(!cellflags_is_writable(tmp));
+    tmp.w = 0x0c; // XW-
+    ck_assert(!cellflags_is_noexec(tmp));
+    ck_assert(cellflags_is_exec(tmp));
+    ck_assert(!cellflags_is_readonly(tmp));
+    ck_assert(cellflags_is_writable(tmp));
+}
+END_TEST
 
 int main(int argc, char *argv[])
 {
@@ -65,9 +93,11 @@ int main(int argc, char *argv[])
     
     TCase *tc_core = tcase_create("Core");
 
-    tcase_add_test(tc_core, test_one);
     tcase_add_test(tc_core, test_getDescFields);
     tcase_add_test(tc_core, test_setDescFields);
+    tcase_add_test(tc_core, test_cellflags);
+    tcase_add_test(tc_core, test_check_cellflags);
+    
 
     suite_add_tcase(s, tc_core);
     
