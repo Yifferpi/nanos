@@ -87,6 +87,31 @@ START_TEST (test_check_cellflags) {
 }
 END_TEST
 
+START_TEST (test_cellnumber) {
+    rt_desc *desc = malloc(4 * sizeof(rt_desc));
+    ((rt_meta *)desc)->N = 3;
+    ((rt_meta *)desc)->M = 1;
+    ((rt_meta *)desc)->T = 1;
+    rt_desc tmp; 
+    set_vbase(&tmp,  0x008000);
+    set_vbound(&tmp, 0x00f000);
+    desc[1] = tmp;
+    set_vbase(&tmp,  0x00f000);
+    set_vbound(&tmp, 0x010000);
+    desc[2] = tmp;
+    set_vbase(&tmp,  0x010000);
+    set_vbound(&tmp, 0x0f0000);
+    desc[3] = tmp;
+    ck_assert(cell_number_from_va((u64) desc, 0x008001) == 1);
+    ck_assert(cell_number_from_va((u64) desc, 0x00a000) == 1);
+    ck_assert(cell_number_from_va((u64) desc, 0x00f000) == 2);
+    ck_assert(cell_number_from_va((u64) desc, 0x00ffff) == 2);
+    ck_assert(cell_number_from_va((u64) desc, 0x01ffff) == 3);
+    ck_assert(cell_number_from_va((u64) desc, 0x0effff) == 3);
+    // Missing: case of virtual address not mapped
+}
+END_TEST
+
 int main(int argc, char *argv[])
 {
     Suite *s = suite_create("SecureCells");
@@ -97,6 +122,7 @@ int main(int argc, char *argv[])
     tcase_add_test(tc_core, test_setDescFields);
     tcase_add_test(tc_core, test_cellflags);
     tcase_add_test(tc_core, test_check_cellflags);
+    tcase_add_test(tc_core, test_cellnumber);
     
 
     suite_add_tcase(s, tc_core);
