@@ -62,8 +62,8 @@ N       | M         | T
 typedef struct rt_meta {
     u32     N;      // # of Cells
     u32     M;      // # of Security Divisions
+    u32     S;      // # of cache lines for cells
     u32     T;      // # of permission cache lines per SD
-    u32     pad;    // unused
 } rt_meta;
 
 
@@ -164,14 +164,17 @@ static inline void set_vbound(rt_desc *desc, u64 vbound) {
     desc->lower = (desc->lower & ~(lower_mask << RT_VA_END_SHIFT)) | ((vbound & lower_mask) << RT_VA_END_SHIFT);
 }
 /* Meta field manipulation */
-static inline u32 get_N(rt_meta *meta) {
-    return meta->N;
+static inline u32 get_N(rt_desc *base) {
+    return ((rt_meta *) base)->N;
 }
-static inline u32 get_M(rt_meta *meta) {
-    return meta->M;
+static inline u32 get_M(rt_desc *base) {
+    return ((rt_meta *) base)->M;
 }
-static inline u32 get_T(rt_meta *meta) {
-    return meta->T;
+static inline u32 get_S(rt_desc *base) {
+    return ((rt_meta *) base)->S;
+}
+static inline u32 get_T(rt_desc *base) {
+    return ((rt_meta *) base)->T;
 }
 
 /* next three inlines seem to be permissions used for different types
@@ -226,6 +229,7 @@ pageflags_device() might be for memory mapped IO regions
 //    return (pageflags){.w = flags.w | PAGE_NO_BLOCK};
 //}
 // same for cellflags (u8)
+
 static inline cellflags cellflags_writable(cellflags flags)
 {
     return (cellflags){.w = flags.w | CELL_WRITABLE};

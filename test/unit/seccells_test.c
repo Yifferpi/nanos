@@ -102,13 +102,45 @@ START_TEST (test_cellnumber) {
     set_vbase(&tmp,  0x010000);
     set_vbound(&tmp, 0x0f0000);
     desc[3] = tmp;
-    ck_assert(cell_number_from_va((u64) desc, 0x008001) == 1);
-    ck_assert(cell_number_from_va((u64) desc, 0x00a000) == 1);
-    ck_assert(cell_number_from_va((u64) desc, 0x00f000) == 2);
-    ck_assert(cell_number_from_va((u64) desc, 0x00ffff) == 2);
-    ck_assert(cell_number_from_va((u64) desc, 0x01ffff) == 3);
-    ck_assert(cell_number_from_va((u64) desc, 0x0effff) == 3);
+
+    rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
+    ck_assert(cell_number_from_va(0x008001) == 1);
+    ck_assert(cell_number_from_va(0x00a000) == 1);
+    ck_assert(cell_number_from_va(0x00f000) == 2);
+    ck_assert(cell_number_from_va(0x00ffff) == 2);
+    ck_assert(cell_number_from_va(0x01ffff) == 3);
+    ck_assert(cell_number_from_va(0x0effff) == 3);
     // Missing: case of virtual address not mapped
+}
+END_TEST
+
+START_TEST (test_map) {
+    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
+    rt_meta meta = {
+        .M = 1,
+        .N = 0,
+        .S = 2,
+        .T = 1
+    };
+    *(rt_meta *)desc = meta;
+    cellflags flags;
+    flags.w = 0x00;
+    map(0x1000, 0x8000, 0x0080, cellflags_writable(flags));
+    map(0x3000, 0x8000, 0x0080, cellflags_writable(flags));
+    print_desc(desc[1], "first insert");
+    print_desc(desc[2], "second insert");
+    ck_assert(get_vbase(desc[1])  == 0x1000);
+    ck_assert(get_vbound(desc[1]) == 0x1080);
+    ck_assert(get_vbase(desc[2])  == 0x3000);
+    ck_assert(get_vbound(desc[2]) == 0x3080);
+    map(0x2000, 0x8000, 0x0080, cellflags_writable(flags));
+    ck_assert(get_vbase(desc[1])  == 0x1000);
+    ck_assert(get_vbound(desc[1]) == 0x1080);
+    ck_assert(get_vbase(desc[2])  == 0x2000);
+    ck_assert(get_vbound(desc[2]) == 0x2080);
+    ck_assert(get_vbase(desc[3])  == 0x3000);
+    ck_assert(get_vbound(desc[3]) == 0x3080);
 }
 END_TEST
 
@@ -123,7 +155,7 @@ int main(int argc, char *argv[])
     tcase_add_test(tc_core, test_cellflags);
     tcase_add_test(tc_core, test_check_cellflags);
     tcase_add_test(tc_core, test_cellnumber);
-    
+    tcase_add_test(tc_core, test_map);
 
     suite_add_tcase(s, tc_core);
     
