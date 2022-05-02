@@ -114,7 +114,12 @@ START_TEST (test_cellnumber) {
 }
 END_TEST
 
-START_TEST (test_map) {
+START_TEST (test_map_description) {
+    //test 
+    //- map description
+    //- map permission
+    // - already existent address
+    // - query address / translate address
     rt_desc * desc = malloc(12 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
     rt_meta meta = {
@@ -126,8 +131,11 @@ START_TEST (test_map) {
     *(rt_meta *)desc = meta;
     cellflags flags;
     flags.w = 0x00;
+    printf("Number of cells: %d\n", get_N(desc));
     map(0x1000, 0x8000, 0x0080, cellflags_writable(flags));
+    printf("Number of cells: %d\n", get_N(desc));
     map(0x3000, 0x8000, 0x0080, cellflags_writable(flags));
+    printf("Number of cells: %d\n", get_N(desc));
     print_desc(desc[1], "first insert");
     print_desc(desc[2], "second insert");
     ck_assert(get_vbase(desc[1])  == 0x1000);
@@ -141,6 +149,41 @@ START_TEST (test_map) {
     ck_assert(get_vbound(desc[2]) == 0x2080);
     ck_assert(get_vbase(desc[3])  == 0x3000);
     ck_assert(get_vbound(desc[3]) == 0x3080);
+    free(desc);
+}
+END_TEST
+
+START_TEST (test_map_permissions) {
+    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
+    rt_meta meta = {
+        .M = 1,
+        .N = 0,
+        .S = 2,
+        .T = 1
+    };
+    *(rt_meta *)desc = meta;
+    cellflags * permissionptr = (cellflags *)(desc + 8); //pointer to where the permissions start
+
+    cellflags nullflags = { .w = 0x00};
+    map(0x3000, 0x8000, 4096, cellflags_writable(nullflags));
+    print_u8(permissionptr[1].w, "flags");
+    print_u8(permissionptr[1].w, "first");
+    ck_assert(cellflags_is_writable(permissionptr[1]));
+    map(0x5000, 0xa000, 4096, cellflags_writable(nullflags));
+    printf("Number of cells: %d\n", get_N(desc));
+    print_u8(permissionptr[2].w, "second");
+    ck_assert(cellflags_is_writable(permissionptr[2]));
+    
+    map(0x1000, 0x6000, 4096, cellflags_exec(nullflags));
+    ck_assert(cellflags_is_exec(permissionptr[1]));
+
+    for (int i = 0; i < 12; i++) {
+        rt_desc * d = (rt_desc *) desc;
+        print_desc(d[i], "");
+    }
+
+
 }
 END_TEST
 
@@ -155,7 +198,8 @@ int main(int argc, char *argv[])
     tcase_add_test(tc_core, test_cellflags);
     tcase_add_test(tc_core, test_check_cellflags);
     tcase_add_test(tc_core, test_cellnumber);
-    tcase_add_test(tc_core, test_map);
+    tcase_add_test(tc_core, test_map_description);
+    tcase_add_test(tc_core, test_map_permissions);
 
     suite_add_tcase(s, tc_core);
     

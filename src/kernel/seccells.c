@@ -9,7 +9,11 @@
 
 #include <seccells.h>
 
+/* This function, given a pointer and a length, is supposed to populate
+the initial datastructure. M=1, and depending on the size different R and T */
 void init_permission_table() {
+    // set M=1, therefore there is only one SD and we can make a lot of space
+    //for cells
     //allocate space for permission table from 'pagemem'-like struct
 
     //problem: with paging, any page-sized memory would work out of the box.
@@ -18,33 +22,16 @@ void init_permission_table() {
     //for unit testing, do this manually in the test file
 }
 cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id) {
-    u32 S = get_S(base);
-    u32 T = get_T(base);
-    cellflags * perms = (cellflags *) base + 4*(S+T);
+    u32 S = get_S(base); // the max number of cachelines reserved for descriptions
+    u32 T = get_T(base); // the number of cache lines for permissions per SD
+
+    //cellflags * perms = (cellflags *) (base + 4*(S+T-1));
+    cellflags * perms = (cellflags *) (base + (4*S)+(sd_id*(T-1)));
     return perms + cell_idx;
 }
-/* here is another problem: there is not one cellflags, but an array of cellflags,
-one per security division! 
-Introduce wrapper for case of one sd*/
-//physical map_one(u64 v, physical p, u64 length, cellflags flags) {
-//    #ifdef UNITTESTING
-//    u64 base = rtbaseaddr;
-//    #else
-//    u64 base = get_permissiontable_base(v);
-//    #endif
-//    rt_desc * tb = (rt_desc *)base;
-//    u32 M = get_M(tb);
-//    cellflags flagarray[M];
-//    for (int i = 0; i < M; i++) {
-//        flagarray[i] = flags;
-//    }
-//    map(v, p, length, flagarray);
-//}
 
+// in a full-fletched implementation, `flags` would need to be an array of size M
 physical map(u64 v, physical p, u64 length, cellflags flags) {
-    /* TODO
-
-    */
     #ifdef UNITTESTING
     u64 base = rtbaseaddr;
     #else
@@ -61,13 +48,7 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
         */
     } else {
         /* Mapping does not exist yet. Create new description, adapt the mapping */
-        printf("made it to the else\n");
-        rt_desc newcell;
-        set_pbase(&newcell, p);
-        set_vbase(&newcell, v);
-        set_vbound(&newcell, v+length);
-        // DONT forget to adapt the meta cell 
-        // insert 
+        
         //changing meta: S needs to be (N/4)+1, have S initially bigger, so we don't need to change it every time
         //if ((N / 4) + 1 > S) {
             //thats when we need to change the layout drastically..
@@ -78,24 +59,28 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
             i++;
         }
         // now at the i where we insert the cell
-        rt_desc tmp = tb[i];
-        //problem: one cannot just 'malloc'..
-        //cellflags * tmp_flags = malloc(get_M(tb)*sizeof(cellflags));
-        //for (int sd = 1; sd <= get_M(tb); sd++) {
-        //    tmp_flags[sd-1] = *get_flagptr(base, i, sd);
-        //}
+
+        rt_desc new_desc;
+        set_pbase(&new_desc, p);
+        set_vbase(&new_desc, v);
+        set_vbound(&new_desc, v+length);
+        cellflags new_flags = flags;
+        
+        // loop fencepost
+        rt_desc old_desc = tb[i];
+        cellflags old_flags = *get_flagptr(tb, i, 1);
         while ( i <= N+1) {
-            tb[i] = newcell;
-            newcell = tmp;
+            tb[i] = new_desc;
+            *get_flagptr(tb, i, 1) = new_flags;
+
+            new_desc = old_desc;
+            new_flags = old_flags;
+
             i++;
-            // also change permissions in the same go (for all! SC)
+            old_desc = tb[i];
+            old_flags = *get_flagptr(tb, i, 1);
         }
         ((rt_meta *) tb)->N = N+1;
-        printf("through the setting loop, i currently at %d\n", i);
-
-        // make sure all cells still fit, move other cells
-
-        /* create new cellflags */
     }
     
     return (u64) 0;

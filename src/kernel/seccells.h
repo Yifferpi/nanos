@@ -15,3 +15,4 @@ physical map(u64 v, physical p, u64 length, cellflags flags);
 
 
 #include <seccells_machine.h>
+cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id);
