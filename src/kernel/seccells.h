@@ -8,8 +8,9 @@ typedef struct cellflags {
 } cellflags;
 
 //int cell_number_from_va(u64 vaddr);
-u32 cell_number_from_va(u64 vaddr);
+u32 cell_id_from_vaddr(u64 vaddr);
 physical map(u64 v, physical p, u64 length, cellflags flags);
+void unmap(u64 virtual, u64 length);
 
 //physical map_with_complete(u64 v, physical p, u64 length, pageflags flags, status_handler complete);
 

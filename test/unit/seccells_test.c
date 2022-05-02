@@ -10,21 +10,15 @@
 #define print_desc(d, msg) printf("%s: %016lx%016lx\n", msg, (long unsigned int) d.upper, (long unsigned int) d.lower)
 
 START_TEST (test_getDescFields) {
-    rt_desc desc;
-    desc.upper = 0xdddcccccccccccaa;
-    desc.lower = 0xaaaaaaabbbbbbbbb;
-    print_desc(desc, "before");
-
+    rt_desc desc = {
+        .upper = 0xdddcccccccccccaa,
+        .lower = 0xaaaaaaabbbbbbbbb,
+    };
     u64 ans = get_pbase(desc);
-    print_u64(ans, "pbase");
     ck_assert(0xccccccccccc == ans);
-
     ans = get_vbase(desc);
-    print_u64(ans, "vbase");
     ck_assert(0xbbbbbbbbb == ans);
-    
     ans = get_vbound(desc);
-    print_u64(ans, "vbound");
     ck_assert(0xaaaaaaaaa == ans);
 
     //MISSING: valid bit
@@ -33,31 +27,23 @@ START_TEST (test_getDescFields) {
 END_TEST
 
 START_TEST (test_setDescFields) {
-    rt_desc desc;
-    desc.upper = 0;
-    desc.lower = 0;
-
-    print_desc(desc, "before");
+    rt_desc desc = {.upper = 0,.lower = 0,};
+    
     set_pbase(&desc, 0xdeadbeef);
-    print_desc(desc, "insert pbase");
     ck_assert(desc.upper == 0x000000deadbeef00);
 
     set_vbase(&desc, 0xcafecafe);
-    print_desc(desc, "insert vbase");
     ck_assert(desc.lower == 0x00000000cafecafe);
 
     set_vbound(&desc, 0xaaaabbbb);
-    print_desc(desc, "insert bound");
     ck_assert(desc.upper == 0x000000deadbeef0a);
     ck_assert(desc.lower == 0xaaabbbb0cafecafe);
-
-
 }
 END_TEST
+
 /* RSW | A | G | U | X | W | R | V */
 START_TEST (test_cellflags) {
-    cellflags tmp;
-    tmp.w = 0x00;
+    cellflags tmp = {.w = 0x00};
     tmp = cellflags_writable(tmp);
     ck_assert(tmp.w == 0x04); // -W-
     tmp = cellflags_exec(tmp);
@@ -72,9 +58,9 @@ START_TEST (test_cellflags) {
 
 }
 END_TEST
+
 START_TEST (test_check_cellflags) {
-    cellflags tmp;
-    tmp.w = 0x00; // ---
+    cellflags tmp = {.w = 0x00}; // ---
     ck_assert(cellflags_is_noexec(tmp));
     ck_assert(!cellflags_is_exec(tmp));
     ck_assert(cellflags_is_readonly(tmp));
@@ -87,11 +73,26 @@ START_TEST (test_check_cellflags) {
 }
 END_TEST
 
-START_TEST (test_cellnumber) {
+START_TEST (test_metafield) {
     rt_desc *desc = malloc(4 * sizeof(rt_desc));
-    ((rt_meta *)desc)->N = 3;
-    ((rt_meta *)desc)->M = 1;
-    ((rt_meta *)desc)->T = 1;
+    set_N(desc, 4);
+    set_M(desc, 1);
+    set_S(desc, 2);
+    set_T(desc, 1);
+    ck_assert_int_eq(get_N(desc), 4);
+    ck_assert_int_eq(get_M(desc), 1);
+    ck_assert_int_eq(get_S(desc), 2);
+    ck_assert_int_eq(get_T(desc), 1);
+}
+END_TEST
+
+START_TEST (test_cellnumber) {
+    rt_desc *desc = malloc(8 * sizeof(rt_desc));
+    set_N(desc, 4);
+    set_M(desc, 1);
+    set_S(desc, 1);
+    set_T(desc, 1);
+
     rt_desc tmp; 
     set_vbase(&tmp,  0x008000);
     set_vbound(&tmp, 0x00f000);
@@ -104,45 +105,34 @@ START_TEST (test_cellnumber) {
     desc[3] = tmp;
 
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
-    ck_assert(cell_number_from_va(0x008001) == 1);
-    ck_assert(cell_number_from_va(0x00a000) == 1);
-    ck_assert(cell_number_from_va(0x00f000) == 2);
-    ck_assert(cell_number_from_va(0x00ffff) == 2);
-    ck_assert(cell_number_from_va(0x01ffff) == 3);
-    ck_assert(cell_number_from_va(0x0effff) == 3);
-    // Missing: case of virtual address not mapped
+    ck_assert(cell_id_from_vaddr(0x008000) == 1);
+    ck_assert(cell_id_from_vaddr(0x00a000) == 1);
+    ck_assert(cell_id_from_vaddr(0x00f000) == 2);
+    ck_assert(cell_id_from_vaddr(0x00ffff) == 2);
+    ck_assert(cell_id_from_vaddr(0x010000) == 3);
+    ck_assert(cell_id_from_vaddr(0x01ffff) == 3);
+    ck_assert(cell_id_from_vaddr(0x0effff) == 3);
+    ck_assert(cell_id_from_vaddr(0x007000) == 0); // unmapped addresses
+    ck_assert(cell_id_from_vaddr(0x0fffff) == 0);
+    free(desc);
 }
 END_TEST
 
 START_TEST (test_map_description) {
-    //test 
-    //- map description
-    //- map permission
-    // - already existent address
-    // - query address / translate address
     rt_desc * desc = malloc(12 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
-    rt_meta meta = {
-        .M = 1,
-        .N = 0,
-        .S = 2,
-        .T = 1
-    };
-    *(rt_meta *)desc = meta;
-    cellflags flags;
-    flags.w = 0x00;
-    printf("Number of cells: %d\n", get_N(desc));
-    map(0x1000, 0x8000, 0x0080, cellflags_writable(flags));
-    printf("Number of cells: %d\n", get_N(desc));
-    map(0x3000, 0x8000, 0x0080, cellflags_writable(flags));
-    printf("Number of cells: %d\n", get_N(desc));
-    print_desc(desc[1], "first insert");
-    print_desc(desc[2], "second insert");
+    set_N(desc, 1);
+    set_M(desc, 1);
+    set_S(desc, 2);
+    set_T(desc, 1);
+
+    map(0x1000, 0x8000, 0x0080, cellflags_writable((cellflags){.w=0x00}));
+    map(0x3000, 0x8000, 0x0080, cellflags_writable((cellflags){.w=0x00}));
     ck_assert(get_vbase(desc[1])  == 0x1000);
     ck_assert(get_vbound(desc[1]) == 0x1080);
     ck_assert(get_vbase(desc[2])  == 0x3000);
     ck_assert(get_vbound(desc[2]) == 0x3080);
-    map(0x2000, 0x8000, 0x0080, cellflags_writable(flags));
+    map(0x2000, 0x8000, 0x0080, cellflags_writable((cellflags){.w=0x00}));
     ck_assert(get_vbase(desc[1])  == 0x1000);
     ck_assert(get_vbound(desc[1]) == 0x1080);
     ck_assert(get_vbase(desc[2])  == 0x2000);
@@ -153,61 +143,107 @@ START_TEST (test_map_description) {
 }
 END_TEST
 
-START_TEST (test_map_permissions) {
+START_TEST (test_map_sorted) {
+    /* This test ensures that inserted cell descriptions remain sorted
+    by virtual address */
     rt_desc * desc = malloc(12 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
-    rt_meta meta = {
-        .M = 1,
-        .N = 0,
-        .S = 2,
-        .T = 1
-    };
-    *(rt_meta *)desc = meta;
+    set_N(desc, 1);
+    set_M(desc, 1);
+    set_S(desc, 2);
+    set_T(desc, 1);
+    
+    cellflags flags = {.w = 0x00};
+    map(0x2000, 0x0, 4096, flags);
+    map(0x3000, 0x0, 8192, flags);
+    map(0x1000, 0x0, 4096, flags);
+    map(0x5000, 0x0, 4096, flags);
+    map(0x8000, 0x0, 1000, flags);
+    for (int i = 1; i < get_N(desc) - 1; i++) {
+        ck_assert(get_vbound(desc[i]) <= get_vbase(desc[i+1]));
+    }
+    free(desc);
+}
+END_TEST
+
+START_TEST (test_map_permissions) {
+    /* This test checks whether permissions are set correctly on mapping
+    and whether the permissions are moved along with the cell descriptions */
+    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
+    set_N(desc, 1);
+    set_M(desc, 1);
+    set_S(desc, 2);
+    set_T(desc, 1);
     cellflags * permissionptr = (cellflags *)(desc + 8); //pointer to where the permissions start
+
+    map(0x3000, 0x8000, 4096, cellflags_writable((cellflags){.w=0x00}));
+    ck_assert(cellflags_is_writable(permissionptr[1]));
+    map(0x5000, 0xa000, 4096, (cellflags){.w = 0xab});
+    ck_assert(permissionptr[2].w == 0xab);
+    map(0x1000, 0x6000, 4096, cellflags_exec((cellflags){.w=0x00}));
+    ck_assert(cellflags_is_exec(permissionptr[1]));
+    map(0x8000, 0x0, 4096, (cellflags){.w = 0xcd});
+    ck_assert(cellflags_is_exec(permissionptr[4]));
+    free(desc);
+}
+END_TEST
+
+START_TEST (test_unmap) {
+    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
+    set_N(desc, 1);
+    set_M(desc, 1);
+    set_S(desc, 2);
+    set_T(desc, 1);
 
     cellflags nullflags = { .w = 0x00};
     map(0x3000, 0x8000, 4096, cellflags_writable(nullflags));
-    print_u8(permissionptr[1].w, "flags");
-    print_u8(permissionptr[1].w, "first");
-    ck_assert(cellflags_is_writable(permissionptr[1]));
-    map(0x5000, 0xa000, 4096, cellflags_writable(nullflags));
-    printf("Number of cells: %d\n", get_N(desc));
-    print_u8(permissionptr[2].w, "second");
-    ck_assert(cellflags_is_writable(permissionptr[2]));
-    
-    map(0x1000, 0x6000, 4096, cellflags_exec(nullflags));
-    ck_assert(cellflags_is_exec(permissionptr[1]));
+    unmap(0x3000, 4096);
+    ck_assert(get_N((rt_desc *) desc) == 1);
 
     for (int i = 0; i < 12; i++) {
         rt_desc * d = (rt_desc *) desc;
         print_desc(d[i], "");
     }
-
-
+    free(desc);
 }
 END_TEST
+
+/* Testing TODO
+- map already existing address, overlapping address, check expected error
+- query / translate address
+- extended testing of unmap
+*/
 
 int main(int argc, char *argv[])
 {
     Suite *s = suite_create("SecureCells");
     
     TCase *tc_core = tcase_create("Core");
+    TCase *tc_macros = tcase_create("Macros");
+    TCase *tc_map = tcase_create("Map");
+    TCase *tc_unmap = tcase_create("Unmap");
 
-    tcase_add_test(tc_core, test_getDescFields);
-    tcase_add_test(tc_core, test_setDescFields);
-    tcase_add_test(tc_core, test_cellflags);
-    tcase_add_test(tc_core, test_check_cellflags);
+    tcase_add_test(tc_macros, test_getDescFields);
+    tcase_add_test(tc_macros, test_setDescFields);
+    tcase_add_test(tc_macros, test_cellflags);
+    tcase_add_test(tc_macros, test_check_cellflags);
+    tcase_add_test(tc_macros, test_metafield);
+
     tcase_add_test(tc_core, test_cellnumber);
-    tcase_add_test(tc_core, test_map_description);
-    tcase_add_test(tc_core, test_map_permissions);
+    tcase_add_test(tc_map, test_map_description);
+    tcase_add_test(tc_map, test_map_sorted);
+    tcase_add_test(tc_map, test_map_permissions);
+    tcase_add_test(tc_unmap, test_unmap);
 
     suite_add_tcase(s, tc_core);
+    suite_add_tcase(s, tc_map);
     
     SRunner *sr = srunner_create(s);
     srunner_run_all(sr, CK_NORMAL);
     int number_failed = srunner_ntests_failed(sr);
     srunner_free(sr);
     
-    //msg_err("something went terribly wrong, basil\n");
     return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

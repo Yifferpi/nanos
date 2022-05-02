@@ -8,6 +8,7 @@
 //#include <kernel.h>
 
 #include <seccells.h>
+#define CURRENT_SD 0
 
 /* This function, given a pointer and a length, is supposed to populate
 the initial datastructure. M=1, and depending on the size different R and T */
@@ -21,12 +22,12 @@ void init_permission_table() {
 
     //for unit testing, do this manually in the test file
 }
+
 cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id) {
     u32 S = get_S(base); // the max number of cachelines reserved for descriptions
     u32 T = get_T(base); // the number of cache lines for permissions per SD
 
-    //cellflags * perms = (cellflags *) (base + 4*(S+T-1));
-    cellflags * perms = (cellflags *) (base + (4*S)+(sd_id*(T-1)));
+    cellflags * perms = (cellflags *) (base + 4*S + sd_id*T);
     return perms + cell_idx;
 }
 
@@ -37,56 +38,76 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     #else
     u64 base = get_permissiontable_base(v);
     #endif
-    //rt_meta *meta = (rt_meta *) base;
-    rt_desc * tb = (rt_desc *) base;
-    u32 cell_nr = cell_number_from_va(v);
-    if (1 <= cell_nr && cell_nr <= get_N(tb)) {
-        /* We already have a mapping */
-        /*
-        - check if this is a remapping? same virtual but different physical? 
-        - throw exception? maybe, function 'remap()' must be used for this case
-        */
-    } else {
-        /* Mapping does not exist yet. Create new description, adapt the mapping */
-        
-        //changing meta: S needs to be (N/4)+1, have S initially bigger, so we don't need to change it every time
-        //if ((N / 4) + 1 > S) {
-            //thats when we need to change the layout drastically..
-        //}
-        u32 N = get_N(tb);
-        int i = 1;
-        while (i <= N && get_vbound(tb[i]) < v) {
-            i++;
-        }
-        // now at the i where we insert the cell
-
-        rt_desc new_desc;
-        set_pbase(&new_desc, p);
-        set_vbase(&new_desc, v);
-        set_vbound(&new_desc, v+length);
-        cellflags new_flags = flags;
-        
-        // loop fencepost
-        rt_desc old_desc = tb[i];
-        cellflags old_flags = *get_flagptr(tb, i, 1);
-        while ( i <= N+1) {
-            tb[i] = new_desc;
-            *get_flagptr(tb, i, 1) = new_flags;
-
-            new_desc = old_desc;
-            new_flags = old_flags;
-
-            i++;
-            old_desc = tb[i];
-            old_flags = *get_flagptr(tb, i, 1);
-        }
-        ((rt_meta *) tb)->N = N+1;
-    }
     
-    return (u64) 0;
+    rt_desc * tb = (rt_desc *) base;
+    u32 cell_id = cell_id_from_vaddr(v);
+    /*
+    We need to check 4 cases:
+    - Mapping not yet existent:     simply create the mapping
+    - Same mapping existent:        adjust permissions?
+    - Same base, different length:  adjust bounds?
+    - Overlapping mapping:          fatal error
+    The difference can also be in virtual and/or physical
+    */
+    if (1 <= cell_id && cell_id <= get_N(tb)) {
+        /* We already have a mapping */
+        return (u64) 0;
+    }
+
+    /* Mapping does not exist yet. Create new description, adapt the mapping */
+    u32 N = get_N(tb);
+    int i = 1;
+    while (i < N && get_vbound(tb[i]) <= v) {
+        i++;
+    }
+
+    rt_desc new_desc;
+    set_pbase(&new_desc, p);
+    set_vbase(&new_desc, v);
+    set_vbound(&new_desc, v+length);
+    cellflags new_flags = flags;
+        
+    // loop fencepost
+    rt_desc old_desc = tb[i];
+    cellflags old_flags = *get_flagptr(tb, i, CURRENT_SD);
+    while ( i < N+1) {
+        tb[i] = new_desc;
+        *get_flagptr(tb, i, CURRENT_SD) = new_flags;
+
+        new_desc = old_desc;
+        new_flags = old_flags;
+
+        i++;
+        old_desc = tb[i];
+        old_flags = *get_flagptr(tb, i, CURRENT_SD);
+    }
+    ((rt_meta *) tb)->N = N+1;
+    
+    return (u64) p;
 }
 
-u32 cell_number_from_va(u64 vaddr) {
+void unmap(u64 virtual, u64 length) {
+    #ifdef UNITTESTING
+    u64 base = rtbaseaddr;
+    #else
+    u64 base = get_permissiontable_base(virtual);
+    #endif
+    rt_desc * tb = (rt_desc *) base;
+
+    u32 cell_id = cell_id_from_vaddr(virtual);
+    // fail if not found
+    u32 N = get_N(tb);
+    while (cell_id < N-1) {
+        tb[cell_id] = tb[cell_id+1];
+        *get_flagptr(tb, cell_id, CURRENT_SD) = *get_flagptr(tb, cell_id+1, CURRENT_SD);
+        cell_id++;
+    }
+    ((rt_meta *) tb)->N = N-1;
+}
+
+/* Find Cell ID for the provided virtual address. On success, an ID between
+1 and N-1 is returned. Otherwise, if the address is not mapped, 0 is returned. */
+u32 cell_id_from_vaddr(u64 vaddr) {
     #ifdef UNITTESTING
     u64 rtbase = rtbaseaddr;
     #else

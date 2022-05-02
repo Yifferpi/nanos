@@ -60,11 +60,16 @@ N       | M         | T
 (96:64] | (64:32]   | (32:0]
 */
 typedef struct rt_meta {
-    u32     N;      // # of Cells
+    u32     N;      // # of Cells (including the metacell!)
     u32     M;      // # of Security Divisions
     u32     S;      // # of cache lines for cells
     u32     T;      // # of permission cache lines per SD
 } rt_meta;
+/* N is the number of cells, including the meta cell. This means
+that there are cell descriptions numbered from 1 to N-1.
+In contrast, M is the number of SDs and they are numbered
+from 0 to M-1.
+*/
 
 
 /* Range table constants (we call it RT so as not to confuse it with PT pagetable)
@@ -176,60 +181,22 @@ static inline u32 get_S(rt_desc *base) {
 static inline u32 get_T(rt_desc *base) {
     return ((rt_meta *) base)->T;
 }
+static inline void set_N(rt_desc *base, u32 N) {
+    ((rt_meta *) base)->N = N;
+}
+static inline void set_M(rt_desc *base, u32 M) {
+    ((rt_meta *) base)->M = M;
+}
+static inline void set_S(rt_desc *base, u32 S) {
+    ((rt_meta *) base)->S = S;
+}
+static inline void set_T(rt_desc *base, u32 T) {
+    ((rt_meta *) base)->T = T;
+}
 
 /* next three inlines seem to be permissions used for different types
 of memory: 
-pageflags_memory() for normal DRAM, 
-pageflags_memory_writethrough() might be for swap,
-pageflags_device() might be for memory mapped IO regions 
-(although this would require write permission too?)
 */
-//static inline pageflags pageflags_memory(void)
-//{
-//    return (pageflags){.w = PAGE_DEFAULT_PERMISSIONS};
-//}
-//
-//static inline pageflags pageflags_memory_writethrough(void)
-//{
-//    return (pageflags){.w = PAGE_DEFAULT_PERMISSIONS}; // PMAs are hardwired
-//}
-//
-//static inline pageflags pageflags_device(void)
-//{
-//    return (pageflags){.w = PAGE_DEFAULT_PERMISSIONS}; // PMAs are hardwired
-//}
-///* next batch of functions is for setting pageflags */
-//static inline pageflags pageflags_writable(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w | PAGE_WRITABLE};
-//}
-//// Removes write permission, does not set read permission
-//static inline pageflags pageflags_readonly(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w & ~PAGE_WRITABLE};
-//}
-//
-//static inline pageflags pageflags_user(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w | PAGE_USER};
-//}
-//
-//static inline pageflags pageflags_noexec(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w & ~PAGE_EXEC };
-//}
-//
-//static inline pageflags pageflags_exec(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w | PAGE_EXEC};
-//}
-//
-//static inline pageflags pageflags_minpage(pageflags flags)
-//{
-//    return (pageflags){.w = flags.w | PAGE_NO_BLOCK};
-//}
-// same for cellflags (u8)
-
 static inline cellflags cellflags_writable(cellflags flags)
 {
     return (cellflags){.w = flags.w | CELL_WRITABLE};
