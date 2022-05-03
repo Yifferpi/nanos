@@ -19,14 +19,15 @@ extern void *START, *END;
 
 boolean is_protection_fault(context_frame f)
 {
-    /* XXX is there no hw distinction between writing to a valid
-       readonly page versus writing to a non-existant page? */
-    pte e;
-    // XXX this lookup is not locked but will need to be for smp
-    if (physical_and_pte_from_virtual(frame_fault_address(f), &e) == INVALID_PHYSICAL)
-        return false;
-    u64 cause = SCAUSE_CODE(f[FRAME_CAUSE]);
-    return (e & PAGE_VALID) && (cause == TRAP_E_SPAGE_FAULT);
+    ///* XXX is there no hw distinction between writing to a valid
+    //   readonly page versus writing to a non-existant page? */
+    //pte e;
+    //// XXX this lookup is not locked but will need to be for smp
+    //if (physical_and_pte_from_virtual(frame_fault_address(f), &e) == INVALID_PHYSICAL)
+    //    return false;
+    //u64 cause = SCAUSE_CODE(f[FRAME_CAUSE]);
+    //return (e & PAGE_VALID) && (cause == TRAP_E_SPAGE_FAULT);
+    return false;
 }
 
 void page_invalidate(flush_entry f, u64 address)
@@ -59,10 +60,14 @@ void init_mmu(range init_pt, u64 vtarget)
     /* set supervisor user memory access */
     register u64 sum = STATUS_SUM;
     asm volatile("csrs sstatus, %0" ::"r"(sum) : "memory");
+    page_init_debug("Hello Basil !!!!");
 
-    page_set_allowed_levels(0xe); // 1-3
-    init_page_initial_map(pointer_from_u64(init_pt.start), init_pt);
-    assert(allocate_table_page(&tablebase));
+    // Set initial mapping, initialize VM Manager datastructure, set allowed levels (1-3)
+    init_cell_initial_map(pointer_from_u64(init_pt.start), init_pt, 0xe);
+    // Allocate memory for the permission table.
+    assert(allocate_permission_table(&tablebase));
+
+
     u64 kernel_size = pad(u64_from_pointer(&END) - u64_from_pointer(&START), PAGESIZE);
     page_init_debug("kernel_size ");
     page_init_debug_u64(kernel_size);

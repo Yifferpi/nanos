@@ -85,6 +85,8 @@ these are more or less directly taken from the patched SecureCells qemu
 #define RT_A          0x0000000000000040ull // Accessed
 #define RT_D          0x0000000000000080ull // Dirty
 
+#define RT_DEFAULT_PERMISSIONS (RT_R)       // default permissions for memory (as opposed to devices)
+
 /* Shifts */
 #define RT_VA_START_SHIFT 0            // in 128-bit cell desc
 #define RT_VA_END_SHIFT   36           // in 128-bit cell desc
@@ -197,6 +199,21 @@ static inline void set_T(rt_desc *base, u32 T) {
 /* next three inlines seem to be permissions used for different types
 of memory: 
 */
+#define pageflags_memory() cellflags_memory()
+#define pageflags_device() cellflags_memory()
+#define pageflags_writable(a) cellflags_writable(a)
+#define pageflags_readonly(a) cellflags_readonly(a)
+#define pageflags_user(a) cellflags_user(a)
+#define pageflags_noexec(a) cellflags_noexec(a)
+#define pageflags_exec(a) cellflags_exec(a)
+#define pageflags_minpage(a) cellflags_minpage(a)
+#define pageflags_default_user(a) cellflags_default_user(a)
+
+static inline cellflags cellflags_memory()
+{
+    return (cellflags){.w = RT_DEFAULT_PERMISSIONS};
+}
+
 static inline cellflags cellflags_writable(cellflags flags)
 {
     return (cellflags){.w = flags.w | CELL_WRITABLE};
@@ -220,6 +237,15 @@ static inline cellflags cellflags_noexec(cellflags flags)
 static inline cellflags cellflags_exec(cellflags flags)
 {
     return (cellflags){.w = flags.w | CELL_EXEC};
+}
+// this would manipulate the RSW bits which we don't have, so we return identity for now
+static inline cellflags cellflags_minpage(cellflags flags)
+{
+    return flags;
+}
+static inline cellflags cellflags_default_user(void)
+{
+    return cellflags_user(cellflags_minpage(cellflags_memory()));
 }
 // unclear: we don't have the RSW bits in Seccells
 //static inline cellflags cellflags_minpage(cellflags flags)
@@ -262,6 +288,11 @@ according to the RISCV specification */
 //    return !pageflags_is_noexec(flags);
 //}
 // check functions
+#define pageflags_is_writable(a) cellflags_is_writable(a)
+#define pageflags_is_readonly(a) cellflags_is_readonly(a)
+#define pageflags_is_noexec(a) cellflags_is_noexec(a)
+#define pageflags_is_exec(a) cellflags_is_exec(a)
+
 static inline boolean cellflags_is_writable(cellflags flags)
 {
     return (flags.w & CELL_WRITABLE) != 0;
@@ -276,30 +307,30 @@ static inline boolean cellflags_is_noexec(cellflags flags)
 {
     return (flags.w & CELL_EXEC) == 0;
 }
-
 static inline boolean cellflags_is_exec(cellflags flags)
 {
     return !cellflags_is_noexec(flags);
 }
 
-//typedef u64 pte;
-//typedef volatile pte *pteptr;
+// These typedefs are used by the pagecache. 
+typedef u64 pte;
+typedef volatile pte *pteptr;
 //
-//static inline pte pte_from_pteptr(pteptr pp)
-//{
-//    return *pp;
-//}
+static inline pte pte_from_pteptr(pteptr pp)
+{
+    return *pp;
+}
+// This might be a problem if pp points to a cellflags (u8)
+static inline void pte_set(pteptr pp, pte p)
+{
+    *pp = p;
+}
 //
-//static inline void pte_set(pteptr pp, pte p)
-//{
-//    *pp = p;
-//}
-//
-//static inline boolean pte_is_present(pte entry)
-//{
-//    return (entry & PAGE_VALID) != 0;
-//}
-//
+static inline boolean pte_is_present(pte entry)
+{
+    return (entry & RT_V) != 0;
+}
+
 //static inline boolean pte_is_block_mapping(pte entry)
 //{
 //    return (entry & PAGE_NO_BLOCK) != 0;
@@ -331,12 +362,13 @@ static inline boolean cellflags_is_exec(cellflags flags)
 //        return 0;
 //    return pt_level_shift(level);
 //}
-//
-//static inline u64 pte_map_size(int level, pte entry)
-//{
-//    int order = pte_order(level, entry);
-//    return order ? U64_FROM_BIT(order) : INVALID_PHYSICAL;
-//}
+// THIS IS A PROBLEM! USING ptes!! call from mmap()
+static inline u64 pte_map_size(int level, pte entry)
+{
+    //int order = pte_order(level, entry);
+    //return order ? U64_FROM_BIT(order) : INVALID_PHYSICAL;
+    return 0;
+}
 //
 ///* they distinguish between mapping, which is a translation entry and
 //non-mapping which is an entry pointing to another pagetable */
@@ -378,16 +410,17 @@ static inline boolean cellflags_is_exec(cellflags flags)
 //    return (flags & PAGE_NO_BLOCK) != 0;
 //}
 //
-//static inline boolean pte_is_dirty(pte entry)
-//{
-//    return (entry & PAGE_DIRTY) != 0;
-//}
+static inline boolean pte_is_dirty(pte entry)
+{
+    return (entry & RT_D) != 0;
+}
 //
-//static inline void pt_pte_clean(pteptr pte)
-//{
-//    *pte &= ~PAGE_DIRTY;
-//}
-//
+static inline void pt_pte_clean(pteptr pte)
+{
+    *pte &= ~RT_D;
+}
+// THIS WILL NOT WORK! here, the part of the pte is extracted that does
+//not exist as such anymore...
 //static inline u64 page_from_pte(pte pte)
 //{
 //    return (pte & (MASK(54) & ~PAGE_FLAGS_MASK))<<2;

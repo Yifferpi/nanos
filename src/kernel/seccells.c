@@ -1,18 +1,18 @@
 
-#include <runtime.h>
 #ifdef UNITTESTING
+#include <runtime.h>
+#include <seccells.h>
 #include <stdio.h>
 #define print_u64(val, msg) printf("%s: %016lx\n", msg, (long unsigned int) val)
+#else
+#include <kernel.h>
 #endif
-//#else
-//#include <kernel.h>
 
-#include <seccells.h>
 #define CURRENT_SD 0
 
 /* This function, given a pointer and a length, is supposed to populate
 the initial datastructure. M=1, and depending on the size different R and T */
-void init_permission_table() {
+void init_permission_table(heap pageheap) {
     // set M=1, therefore there is only one SD and we can make a lot of space
     //for cells
     //allocate space for permission table from 'pagemem'-like struct
@@ -22,6 +22,70 @@ void init_permission_table() {
 
     //for unit testing, do this manually in the test file
 }
+
+/* TODO: implement init_mmu()
+To that end, the following three functions need to be implemented here:
+- page_set_allowed_levels()
+- init_page_initial_map()
+- allocate_table_page()
+Maybe, since they are only called form init_mmu(), we can also
+simplify and combine into less functions.
+*/
+
+/* This struct is mostly unused as we will allocate memory for the permission
+table at the very beginning and don't extend it after that. This is due to
+the physical allocator probably being unable to guarantee that additional memory
+would be contiguous. */
+
+static struct {
+    range current_phys;
+    heap pageheap;
+    void *initial_map;
+    u64 initial_physbase;
+    u64 levelmask;              /* bitmap of levels allowed to map */
+} pagemem;
+
+//  this includes `page_set_allowed_levels()`
+void init_cell_initial_map(void *initial_map, range phys, u64 levelmask)
+{
+    //page_init_debug("init_page_initial_map: initial_map ");
+    //page_init_debug_u64(u64_from_pointer(initial_map));
+    //page_init_debug(", phys ");
+    //page_init_debug_u64(phys.start);
+    //page_init_debug(", length ");
+    //page_init_debug_u64(range_span(phys));
+    //page_init_debug("\n");
+
+    //spin_lock_init(&pt_lock);
+    pagemem.levelmask = levelmask;
+    pagemem.current_phys = phys;
+    pagemem.pageheap = 0;
+    pagemem.initial_map = initial_map;
+    pagemem.initial_physbase = phys.start;
+}
+/* replaces allocate_table_page(), in contrast to before, we call it only
+at the beginning from init_mmu() and never after. The base of the allocated
+memory is to be stored into the location 'phys'. */
+void * allocate_permission_table(u64 * phys) {
+    return 0;
+}
+// this function updates flags but additionally flushes tlb stuff
+void update_map_flags_with_complete(u64 vaddr, u64 length, pageflags flags, status_handler complete)
+{
+    //flags = pageflags_no_minpage(flags);
+    //page_debug("%s: vaddr 0x%lx, length 0x%lx, flags 0x%lx\n", __func__, vaddr, length, flags.w);
+
+    ///* Catch any attempt to change page flags in a linear_backed mapping */
+    //assert(!intersects_linear_backed(irangel(vaddr, length)));
+    //flush_entry fe = get_page_flush_entry();
+    //traverse_ptes(vaddr, length, stack_closure(update_pte_flags, flags, fe));
+    //page_invalidate_sync(fe, complete);
+}
+void update_flags() {
+
+}
+
+
 
 cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id) {
     u32 S = get_S(base); // the max number of cachelines reserved for descriptions
@@ -85,6 +149,14 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     
     return (u64) p;
 }
+
+
+void remap() {
+    
+}
+//u64 physical_from_virtual(void *x) {
+//    return (physical) x;  
+//}
 
 void unmap(u64 virtual, u64 length) {
     #ifdef UNITTESTING

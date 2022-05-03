@@ -39,6 +39,7 @@ typedef struct kernel_context {
 
 #include <management.h>
 #include <page.h>
+//#include <seccells.h>
 #include "klib.h"
 
 #define cpu_not_present 0

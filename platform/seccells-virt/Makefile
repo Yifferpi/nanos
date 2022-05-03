@@ -34,7 +34,7 @@ SRCS-kernel.elf= \
 	$(SRCDIR)/kernel/mutex.c \
 	$(SRCDIR)/kernel/seccells.c \
 	$(SRCDIR)/kernel/page_backed_heap.c \
-	$(SRCDIR)/kernel/pagecache.c \
+	$(SRCDIR)/kernel/seccells_pagecache.c \
 	$(SRCDIR)/kernel/pci.c \
 	$(SRCDIR)/kernel/schedule.c \
 	$(SRCDIR)/kernel/stage3.c \

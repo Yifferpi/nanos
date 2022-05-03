@@ -122,7 +122,7 @@ SRCS-seccells_test= \
 	$(CURDIR)/seccells_test.c \
 	$(SRCDIR)/kernel/seccells.c \
 	$(RUNTIME)\
-	$(SRCDIR)/unix_process/unix_process_runtime.c
+	$(SRCDIR)/unix_process/unix_process_runtime.c 
 LIBS-seccells_test=	-lcheck -lsubunit -lm -lrt -lpthread 
 
 
