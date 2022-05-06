@@ -10,6 +10,17 @@
 
 #define CURRENT_SD 0
 
+// for debugging
+#ifdef PAGE_INIT_DEBUG
+#define page_init_debug(x) early_debug(x)
+#define page_init_debug_u64(x) early_debug_u64(x)
+#else
+#define page_init_debug(x)
+#define page_init_debug_u64(x)
+#endif
+
+#define PAGEMEM_ALLOC_SIZE PAGESIZE_2M
+
 /* This function, given a pointer and a length, is supposed to populate
 the initial datastructure. M=1, and depending on the size different R and T */
 void init_permission_table(heap pageheap) {
@@ -63,11 +74,42 @@ void init_cell_initial_map(void *initial_map, range phys, u64 levelmask)
     pagemem.initial_map = initial_map;
     pagemem.initial_physbase = phys.start;
 }
+
+BSS_RO_AFTER_INIT boolean bootstrapping;
 /* replaces allocate_table_page(), in contrast to before, we call it only
 at the beginning from init_mmu() and never after. The base of the allocated
 memory is to be stored into the location 'phys'. */
 void * allocate_permission_table(u64 * phys) {
-    return 0;
+    if (bootstrapping) {
+        /* Bootloader use: single, identity-mapped pages */
+        void *p = allocate_zero(pagemem.pageheap, PAGESIZE);
+        *phys = u64_from_pointer(p);
+        return p;
+    }
+    page_init_debug("allocate_table_page:");
+    if (range_span(pagemem.current_phys) == 0) {
+        assert(pagemem.pageheap);
+        page_init_debug(" [new alloc, va: ");
+        u64 va = allocate_u64(pagemem.pageheap, PAGEMEM_ALLOC_SIZE);
+        if (va == INVALID_PHYSICAL) {
+            msg_err("failed to allocate page table memory\n");
+            return INVALID_ADDRESS;
+        }
+        page_init_debug_u64(va);
+        page_init_debug("] ");
+        assert(is_linear_backed_address(va));
+        pagemem.current_phys = irangel(phys_from_linear_backed_virt(va), PAGEMEM_ALLOC_SIZE);
+    }
+
+    *phys = pagemem.current_phys.start;
+    pagemem.current_phys.start += PAGESIZE;
+    void *p = (void *)*phys;
+    page_init_debug(" phys: ");
+    page_init_debug_u64(*phys);
+    page_init_debug("\n");
+    zero(p, PAGESIZE);
+    return p;
+    //return 0;
 }
 // this function updates flags but additionally flushes tlb stuff
 void update_map_flags_with_complete(u64 vaddr, u64 length, pageflags flags, status_handler complete)
@@ -103,6 +145,9 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     u64 base = get_permissiontable_base(v);
     #endif
     
+    page_init_debug(" maaaaa: \n");
+    page_init_debug_u64(base);
+    page_init_debug("\n");
     rt_desc * tb = (rt_desc *) base;
     u32 cell_id = cell_id_from_vaddr(v);
     /*
@@ -147,16 +192,31 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     }
     ((rt_meta *) tb)->N = N+1;
     
+    
     return (u64) p;
 }
 
-
-void remap() {
-    
+void dump_page_tables(u64 vaddr, u64 length) {
+    return;
 }
-//u64 physical_from_virtual(void *x) {
-//    return (physical) x;  
-//}
+
+void remap_pages(u64 vaddr_new, u64 vaddr_old, u64 length) {
+    return;    
+}
+
+u64 physical_from_virtual(void *x) {
+    return (physical) x;  
+}
+
+/* validate that all pages in vaddr range [base, base + length) are present */
+boolean validate_virtual(void * base, u64 length)
+{
+    return true;
+}
+boolean validate_virtual_writable(void * base, u64 length)
+{
+    return true;
+}
 
 void unmap(u64 virtual, u64 length) {
     #ifdef UNITTESTING

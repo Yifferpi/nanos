@@ -38,8 +38,11 @@ typedef struct kernel_context {
 } *kernel_context;
 
 #include <management.h>
+#ifdef SECCELLS
+#include <seccells.h>
+#else
 #include <page.h>
-//#include <seccells.h>
+#endif
 #include "klib.h"
 
 #define cpu_not_present 0

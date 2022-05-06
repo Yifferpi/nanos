@@ -325,10 +325,11 @@ static inline void pte_set(pteptr pp, pte p)
 {
     *pp = p;
 }
-//
-static inline boolean pte_is_present(pte entry)
+
+// replaces 'pte_is_present(pte entry)'
+static inline boolean cell_is_valid(cellflags flags)
 {
-    return (entry & RT_V) != 0;
+    return (flags.w & RT_V) != 0;
 }
 
 //static inline boolean pte_is_block_mapping(pte entry)
@@ -410,15 +411,17 @@ static inline u64 pte_map_size(int level, pte entry)
 //    return (flags & PAGE_NO_BLOCK) != 0;
 //}
 //
-static inline boolean pte_is_dirty(pte entry)
+
+//replaces 'pte_is_dirty(pte entry)'
+static inline boolean cell_is_dirty(cellflags flags) 
 {
-    return (entry & RT_D) != 0;
+    return (flags.w & RT_D) != 0;
 }
-//
-static inline void pt_pte_clean(pteptr pte)
-{
-    *pte &= ~RT_D;
+//replaces 'pt_pte_clean(pteptr pte)'
+static inline void cell_clean(cellflags *flags) {
+    flags->w &= ~RT_D;
 }
+
 // THIS WILL NOT WORK! here, the part of the pte is extracted that does
 //not exist as such anymore...
 //static inline u64 page_from_pte(pte pte)

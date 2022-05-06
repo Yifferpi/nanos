@@ -60,12 +60,14 @@ void init_mmu(range init_pt, u64 vtarget)
     /* set supervisor user memory access */
     register u64 sum = STATUS_SUM;
     asm volatile("csrs sstatus, %0" ::"r"(sum) : "memory");
-    page_init_debug("Hello Basil !!!!");
 
     // Set initial mapping, initialize VM Manager datastructure, set allowed levels (1-3)
     init_cell_initial_map(pointer_from_u64(init_pt.start), init_pt, 0xe);
     // Allocate memory for the permission table.
     assert(allocate_permission_table(&tablebase));
+    page_init_debug("tablebase: ");
+    page_init_debug_u64(tablebase);
+    page_init_debug("\n");
 
 
     u64 kernel_size = pad(u64_from_pointer(&END) - u64_from_pointer(&START), PAGESIZE);
@@ -73,6 +75,7 @@ void init_mmu(range init_pt, u64 vtarget)
     page_init_debug_u64(kernel_size);
     page_init_debug("\n");
     map(KERNEL_BASE, KERNEL_PHYS, kernel_size, pageflags_writable(pageflags_exec(pageflags_memory())));
+    page_init_debug("Base!!! ");
     page_init_debug("map devices\n");
     map(DEVICE_BASE, 0, DEV_MAP_SIZE, pageflags_writable(pageflags_device()));
 

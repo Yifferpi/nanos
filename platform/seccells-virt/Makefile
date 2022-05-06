@@ -56,7 +56,7 @@ SRCS-kernel.elf= \
 	$(SRCDIR)/unix/inotify.c \
 	$(SRCDIR)/unix/io_uring.c \
 	$(SRCDIR)/unix/mktime.c \
-	$(SRCDIR)/unix/mmap.c \
+	$(SRCDIR)/unix/seccells_mmap.c \
 	$(SRCDIR)/unix/netlink.c \
 	$(SRCDIR)/unix/notify.c \
 	$(SRCDIR)/unix/poll.c \
@@ -136,7 +136,7 @@ INCLUDES=\
 
 AFLAGS+=-I$(ARCHDIR) -march=rv64gc -mabi=lp64d
 
-CFLAGS+=$(KERNCFLAGS) -DKERNEL -O3 -march=rv64gc -mabi=lp64d -fno-pic
+CFLAGS+=$(KERNCFLAGS) -DKERNEL -DSECCELLS -O3 -march=rv64gc -mabi=lp64d -fno-pic
 CFLAGS+=-Wno-address # lwIP build sadness
 CFLAGS+=$(INCLUDES)
 
@@ -300,7 +300,7 @@ QEMU_ACCEL=	-enable-kvm -cpu host
 
 .PHONY: run run-bridge run-nokvm
 
-QEMU=		$(QEMU_PATH)qemu-system-riscv64
+QEMU=		$(QEMU_PATH)qemu-system-seccells
 QEMU_CPU=	-cpu rv64
 DISPLAY=	none
 STORAGE=	virtio-blk

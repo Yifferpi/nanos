@@ -943,6 +943,8 @@ closure_function(1, 3, void, pagecache_read_sg,
 
 
 #ifdef KERNEL
+// This closure function is being replaced below!
+
 //closure_function(3, 3, boolean, pagecache_check_dirty_page,
 //                 pagecache, pc, pagecache_shared_map, sm, flush_entry, fe,
 //                 int, level, u64, vaddr, pteptr, entry)
@@ -969,20 +971,54 @@ closure_function(1, 3, void, pagecache_read_sg,
 
 static void pagecache_scan_shared_map(pagecache pc, pagecache_shared_map sm, flush_entry fe)
 {
+    /* traverse_ptes() takes a closure of type 'entry_handler'
+    and applies it to each entry */
+
+    /* the 'pagecache_check_dirty_page' entry_handler does the following:
+    - fetch entry, check if its present, if its a mapping and if its dirty
+    - if thats the case, compute a page index (for the pagecache most likely)
+    - mark the entry as clean, invalidate page (in the pagetable)
+    - fetch page (pagecache_page)
+    - change the state of the page *in the pagecache* to DIRTY
+    */
+   rt_desc *tb = (rt_desc *) get_permissiontable_base(tablebase);
+   for (int i = 1; i < get_N(tb); i++) {
+       cellflags *oldflags = get_flagptr(tb, i, 1);
+       if (cell_is_valid(*oldflags) && cell_is_dirty(*oldflags)) {
+           
+           u64 vaddr = get_vbase(tb[i]); 
+
+           // compute pagecache index
+           u64 pi = (sm->node_offset + (vaddr - sm->n.r.start)) >> PAGELOG;
+           cell_clean(oldflags); //mark as clean in the permissiontable
+           
+           page_invalidate(fe, vaddr); // does not depend on flush_entry!
+
+           //from here, nothing to to with the pagetable
+           pagecache_page pp = page_lookup_nodelocked(sm->pn, pi);
+           assert(pp != INVALID_ADDRESS);
+           pagecache_lock_state(pc);
+           if (page_state(pp) != PAGECACHE_PAGESTATE_DIRTY)
+               change_page_state_locked(pc, pp, PAGECACHE_PAGESTATE_DIRTY);
+           pagecache_unlock_state(pc);
+
+       }
+
+   }
     //traverse_ptes(sm->n.r.start, range_span(sm->n.r),
     //              stack_closure(pagecache_check_dirty_page, pc, sm, fe));
 }
 
 static void pagecache_scan_shared_mappings(pagecache pc)
 {
-    //pagecache_debug("%s\n", __func__);
-    //flush_entry fe = get_page_flush_entry();
-    //list_foreach(&pc->shared_maps, l) {
-    //    pagecache_shared_map sm = struct_from_list(l, pagecache_shared_map, l);
-    //    pagecache_debug("   shared map va %R, node_offset 0x%lx\n", sm->n.r, sm->node_offset);
-    //    pagecache_scan_shared_map(pc, sm, fe);
-    //}
-    //page_invalidate_sync(fe, 0);
+    pagecache_debug("%s\n", __func__);
+    flush_entry fe = get_page_flush_entry();
+    list_foreach(&pc->shared_maps, l) {
+        pagecache_shared_map sm = struct_from_list(l, pagecache_shared_map, l);
+        pagecache_debug("   shared map va %R, node_offset 0x%lx\n", sm->n.r, sm->node_offset);
+        pagecache_scan_shared_map(pc, sm, fe);
+    }
+    page_invalidate_sync(fe, 0);
 }
 
 static void pagecache_scan_node(pagecache_node pn)
@@ -1250,6 +1286,8 @@ boolean pagecache_map_page_if_filled(pagecache_node pn, u64 node_offset, u64 vad
     return mapped;
 }
 
+// This closure function is being replaced below!
+
 //closure_function(4, 3, boolean, pagecache_unmap_page_nodelocked,
 //                 pagecache_node, pn, u64, vaddr_base, u64, node_offset, flush_entry, fe,
 //                 int, level, u64, vaddr, pteptr, entry)
@@ -1279,14 +1317,55 @@ boolean pagecache_map_page_if_filled(pagecache_node pn, u64 node_offset, u64 vad
 
 void pagecache_node_unmap_pages(pagecache_node pn, range v /* bytes */, u64 node_offset)
 {
-    //pagecache_debug("%s: pn %p, v %R, node_offset 0x%lx\n", __func__, pn, v, node_offset);
-    //flush_entry fe = get_page_flush_entry();
-    //pagecache_node_close_shared_pages(pn, v, fe);
-    //pagecache_lock_node(pn);
+    pagecache_debug("%s: pn %p, v %R, node_offset 0x%lx\n", __func__, pn, v, node_offset);
+    flush_entry fe = get_page_flush_entry();
+    pagecache_node_close_shared_pages(pn, v, fe);
+    pagecache_lock_node(pn);
+    // replace 'traverse_ptes()' with same functionality
+    rt_desc *tb = (rt_desc *) get_permissiontable_base(tablebase);
+    
+    // WATCH OUT! iterate ONLY over range that is supposed to be unmapped
+    u32 cell_id = cell_id_from_vaddr(v.start);
+    for (u32 i = cell_id; i < get_N(tb); i++) {
+        if (get_vbound(tb[i]) >= v.end)
+            break;
+
+        cellflags *oldflags = get_flagptr(tb, i, 1);
+        if (cell_is_valid(*oldflags)) {
+           
+           u64 vaddr = get_vbase(tb[i]); 
+
+           // compute pagecache index
+           u64 pi = (node_offset + (vaddr - v.start)) >> PAGELOG; // this computation might be flawed..
+           
+           //pte_set(entry, 0); // PROBLEMATIC!! this manipulates entire pagetable entries...
+           unmap(get_vbase(tb[cell_id]), (u64)(get_vbase(tb[cell_id]) - get_vbound(tb[cell_id])));
+
+           page_invalidate(fe, vaddr); // does not depend on flush_entry!
+        
+           pagecache_page pp = page_lookup_nodelocked(pn, pi); //removed bound() around pn, okay?
+           assert(pp != INVALID_ADDRESS);
+           //u64 phys = page_from_pte(old_entry); // PROBLEMATIC!! we basically have a manual unmap here.. 
+           u64 phys = get_pbase(tb[i]); 
+
+           /* decision whether the page can be physicalle deallocated or whether it has to
+           be kept because another process has a mapping to it */
+           if (phys == pp->phys) {
+               /* shared or cow */
+               assert(pp->refcount.c >= 1);
+               refcount_release(&pp->refcount);
+            } else {
+                /* private copy: free physical page */
+                pagecache pc = pn->pv->pc; //removed bound() around pn, okay?
+                deallocate_u64(pc->physical, phys, cache_pagesize(pc));
+            }
+
+       }
+    }
     //traverse_ptes(v.start, range_span(v), stack_closure(pagecache_unmap_page_nodelocked, pn,
     //                                                    v.start, node_offset, fe));
-    //pagecache_unlock_node(pn);
-    //page_invalidate_sync(fe, 0);
+    pagecache_unlock_node(pn);
+    page_invalidate_sync(fe, 0);
 }
 #endif
 
