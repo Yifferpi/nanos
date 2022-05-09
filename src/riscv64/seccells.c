@@ -74,8 +74,8 @@ void init_mmu(range init_pt, u64 vtarget)
     page_init_debug("kernel_size ");
     page_init_debug_u64(kernel_size);
     page_init_debug("\n");
-    map(KERNEL_BASE, KERNEL_PHYS, kernel_size, pageflags_writable(pageflags_exec(pageflags_memory())));
     page_init_debug("Base!!! ");
+    map(KERNEL_BASE, KERNEL_PHYS, kernel_size, pageflags_writable(pageflags_exec(pageflags_memory())));
     page_init_debug("map devices\n");
     map(DEVICE_BASE, 0, DEV_MAP_SIZE, pageflags_writable(pageflags_device()));
 
@@ -84,7 +84,14 @@ void init_mmu(range init_pt, u64 vtarget)
     /* satp needs to be set differently: instead of Sv48, the MODE bits
     need to be set to 15 (define a macro)
     */
-    u64 satp = Sv48 | (u64_from_pointer(tablebase) >> 12);
-    asm volatile ("csrw satp, %0; sfence.vma; jr %1" :: "r"(satp), "r"(vtarget) : "memory");
+    u64 satp = Seccells48 | (u64_from_pointer(tablebase) >> 12);
+    page_init_debug("made it after satp\n");
+    page_init_debug_u64(vtarget);
+    //asm volatile ("csrw satp, %0; sfence.vma; jr %1" :: "r"(satp), "r"(vtarget) : "memory");
+    asm volatile ("csrw satp, %0;" :: "r"(satp) : "memory");
+    page_init_debug("\nready to jump\n");
+    asm volatile ("sfence.vma;" ::: "memory");
+    page_init_debug("ready to jump\n");
+    asm volatile ("jr %0" :: "r"(vtarget) : "memory");
 }
 

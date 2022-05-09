@@ -74,24 +74,27 @@ START_TEST (test_check_cellflags) {
 END_TEST
 
 START_TEST (test_metafield) {
-    rt_desc *desc = malloc(4 * sizeof(rt_desc));
+    rt_desc *desc = malloc(16 * sizeof(rt_desc));
     set_N(desc, 4);
     set_M(desc, 1);
-    set_S(desc, 2);
-    set_T(desc, 1);
+    set_R(desc, 1);
+    set_T(desc, 2);
     ck_assert_int_eq(get_N(desc), 4);
     ck_assert_int_eq(get_M(desc), 1);
-    ck_assert_int_eq(get_S(desc), 2);
-    ck_assert_int_eq(get_T(desc), 1);
+    ck_assert_int_eq(get_R(desc), 1);
+    ck_assert_int_eq(get_T(desc), 2);
+    ck_assert_int_eq(get_S(desc), 8);
+    ck_assert_int_eq(get_Q(desc), 2);
+    free(desc);
 }
 END_TEST
 
 START_TEST (test_cellnumber) {
-    rt_desc *desc = malloc(8 * sizeof(rt_desc));
+    rt_desc *desc = malloc(16 * sizeof(rt_desc));
     set_N(desc, 4);
     set_M(desc, 1);
-    set_S(desc, 1);
-    set_T(desc, 1);
+    set_T(desc, 2);
+    set_R(desc, 1);
 
     rt_desc tmp; 
     set_vbase(&tmp,  0x008000);
@@ -119,12 +122,12 @@ START_TEST (test_cellnumber) {
 END_TEST
 
 START_TEST (test_map_description) {
-    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rt_desc * desc = malloc(16 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
     set_N(desc, 1);
     set_M(desc, 1);
-    set_S(desc, 2);
-    set_T(desc, 1);
+    set_T(desc, 2);
+    set_R(desc, 1);
 
     map(0x1000, 0x8000, 0x0080, cellflags_writable((cellflags){.w=0x00}));
     map(0x3000, 0x8000, 0x0080, cellflags_writable((cellflags){.w=0x00}));
@@ -146,12 +149,12 @@ END_TEST
 START_TEST (test_map_sorted) {
     /* This test ensures that inserted cell descriptions remain sorted
     by virtual address */
-    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rt_desc * desc = malloc(16 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
     set_N(desc, 1);
     set_M(desc, 1);
-    set_S(desc, 2);
-    set_T(desc, 1);
+    set_T(desc, 2);
+    set_R(desc, 1);
     
     cellflags flags = {.w = 0x00};
     map(0x2000, 0x0, 4096, flags);
@@ -169,15 +172,23 @@ END_TEST
 START_TEST (test_map_permissions) {
     /* This test checks whether permissions are set correctly on mapping
     and whether the permissions are moved along with the cell descriptions */
-    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rt_desc * desc = malloc(16 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
     set_N(desc, 1);
     set_M(desc, 1);
-    set_S(desc, 2);
-    set_T(desc, 1);
-    cellflags * permissionptr = (cellflags *)(desc + 8); //pointer to where the permissions start
+    set_T(desc, 2);
+    set_R(desc, 1);
 
-    map(0x3000, 0x8000, 4096, cellflags_writable((cellflags){.w=0x00}));
+    cellflags * permissionptr = (cellflags *)(desc + 8); //pointer to where the permissions start
+    for (int i = 0; i < 16; i++) {
+        print_desc(desc[i],"");
+    }
+    //map(0x3000, 0x8000, 4096, cellflags_writable((cellflags){.w=0x00}));
+    map(0x3000, 0x8000, 4096, (cellflags){.w=0xff});
+    printf("after\n");
+    for (int i = 0; i < 16; i++) {
+        print_desc(desc[i],"");
+    }
     ck_assert(cellflags_is_writable(permissionptr[1]));
     map(0x5000, 0xa000, 4096, (cellflags){.w = 0xab});
     ck_assert(permissionptr[2].w == 0xab);
@@ -190,12 +201,12 @@ START_TEST (test_map_permissions) {
 END_TEST
 
 START_TEST (test_unmap) {
-    rt_desc * desc = malloc(12 * sizeof(rt_desc));
+    rt_desc * desc = malloc(16 * sizeof(rt_desc));
     rtbaseaddr = (u64) desc; //this is the replacement for the legitimate tablebase
     set_N(desc, 1);
     set_M(desc, 1);
-    set_S(desc, 2);
-    set_T(desc, 1);
+    set_T(desc, 2);
+    set_R(desc, 1);
 
     cellflags nullflags = { .w = 0x00};
     map(0x3000, 0x8000, 4096, cellflags_writable(nullflags));

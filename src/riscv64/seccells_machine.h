@@ -60,17 +60,18 @@ N       | M         | T
 (96:64] | (64:32]   | (32:0]
 */
 typedef struct rt_meta {
-    u32     N;      // # of Cells (including the metacell!)
-    u32     M;      // # of Security Divisions
-    u32     S;      // # of cache lines for cells
-    u32     T;      // # of permission cache lines per SD
+    u32     N;      // number of SecCells (including the metacell!)
+    u32     M;      // number of Security Divisions
+    u32     T;      // number of permission cache lines per SD
+    u32     R;      // upper bound for number of Security Divisions
+    //      S;      // denotes number of cache lines reserved for Cells
+    //      Q;      // denotes number of cache lines for permissions (total for all SDs)
 } rt_meta;
 /* N is the number of cells, including the meta cell. This means
 that there are cell descriptions numbered from 1 to N-1.
 In contrast, M is the number of SDs and they are numbered
 from 0 to M-1.
 */
-
 
 /* Range table constants (we call it RT so as not to confuse it with PT pagetable)
 these are more or less directly taken from the patched SecureCells qemu 
@@ -170,27 +171,48 @@ static inline void set_vbound(rt_desc *desc, u64 vbound) {
     desc->upper = ((desc->upper & ~upper_mask) | ((vbound >> lower_bits) & upper_mask));
     desc->lower = (desc->lower & ~(lower_mask << RT_VA_END_SHIFT)) | ((vbound & lower_mask) << RT_VA_END_SHIFT);
 }
+    
 /* Meta field manipulation */
+// N denotes number of SecCells (including the metacell!)
 static inline u32 get_N(rt_desc *base) {
     return ((rt_meta *) base)->N;
 }
+//static inline u32 get_N(rt_meta base) {
+//    return base.N;
+//}
+
+// M denotes the number of Security Divisions
 static inline u32 get_M(rt_desc *base) {
     return ((rt_meta *) base)->M;
 }
-static inline u32 get_S(rt_desc *base) {
-    return ((rt_meta *) base)->S;
+// R denotes an upper bound for number of Security Divisions
+static inline u32 get_R(rt_desc *base) {
+    return ((rt_meta *) base)->R;
 }
+// T denotes the number of permission cache lines per SD
 static inline u32 get_T(rt_desc *base) {
     return ((rt_meta *) base)->T;
 }
+/* S denotes number of cache lines reserved for Cells.
+It is computed as follows: S := 4*T */
+static inline u32 get_S(rt_desc *base) {
+    return ((rt_meta *) base)->T * 16;
+}
+/* Q denotes number of cache lines for permissions (total for all SDs).
+It is computed as follows: Q := R*T */
+static inline u32 get_Q(rt_desc *base) {
+    rt_meta *meta = (rt_meta *) base;
+    return meta->T * meta->R;
+}
+
 static inline void set_N(rt_desc *base, u32 N) {
     ((rt_meta *) base)->N = N;
 }
 static inline void set_M(rt_desc *base, u32 M) {
     ((rt_meta *) base)->M = M;
 }
-static inline void set_S(rt_desc *base, u32 S) {
-    ((rt_meta *) base)->S = S;
+static inline void set_R(rt_desc *base, u32 R) {
+    ((rt_meta *) base)->R = R;
 }
 static inline void set_T(rt_desc *base, u32 T) {
     ((rt_meta *) base)->T = T;

@@ -90,7 +90,7 @@ void * allocate_permission_table(u64 * phys) {
     if (range_span(pagemem.current_phys) == 0) {
         assert(pagemem.pageheap);
         page_init_debug(" [new alloc, va: ");
-        u64 va = allocate_u64(pagemem.pageheap, PAGEMEM_ALLOC_SIZE);
+        u64 va = allocate_u64(pagemem.pageheap, PAGEMEM_ALLOC_SIZE); // eventually change this to allocate more than one pagesize!!
         if (va == INVALID_PHYSICAL) {
             msg_err("failed to allocate page table memory\n");
             return INVALID_ADDRESS;
@@ -108,6 +108,13 @@ void * allocate_permission_table(u64 * phys) {
     page_init_debug_u64(*phys);
     page_init_debug("\n");
     zero(p, PAGESIZE);
+    // Initialize datastructure:
+    rt_desc *tb = (rt_desc *) phys;
+    set_N(tb, 1);
+    set_M(tb, 1);
+    set_R(tb, 1);
+    set_T(tb, 12); // T needs to be set depending on the size of the permission table allocated here!
+
     return p;
     //return 0;
 }
@@ -133,7 +140,8 @@ cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id) {
     u32 S = get_S(base); // the max number of cachelines reserved for descriptions
     u32 T = get_T(base); // the number of cache lines for permissions per SD
 
-    cellflags * perms = (cellflags *) (base + 4*S + sd_id*T);
+    cellflags * perms = (cellflags *) (base + S/4 + sd_id*T); 
+    // above: S/4 because we are stepping in size_of(rt_desc), not cachelines
     return perms + cell_idx;
 }
 
@@ -145,11 +153,13 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     u64 base = get_permissiontable_base(v);
     #endif
     
-    page_init_debug(" maaaaa: \n");
+    page_init_debug(" in map func: \n");
     page_init_debug_u64(base);
     page_init_debug("\n");
     rt_desc * tb = (rt_desc *) base;
     u32 cell_id = cell_id_from_vaddr(v);
+    page_init_debug_u64((u64) cell_id);
+    page_init_debug("got cellid\n");
     /*
     We need to check 4 cases:
     - Mapping not yet existent:     simply create the mapping
@@ -204,9 +214,11 @@ void remap_pages(u64 vaddr_new, u64 vaddr_old, u64 length) {
     return;    
 }
 
+#ifndef UNITTESTING
 u64 physical_from_virtual(void *x) {
     return (physical) x;  
 }
+#endif
 
 /* validate that all pages in vaddr range [base, base + length) are present */
 boolean validate_virtual(void * base, u64 length)
@@ -245,8 +257,20 @@ u32 cell_id_from_vaddr(u64 vaddr) {
     #else
     u64 rtbase = get_permissiontable_base(vaddr);
     #endif
+    page_init_debug("getting table base:\n");
+    //page_init_debug_u64(rtbase);
+    //page_init_debug("\n");
     //rt_meta *meta = (rt_meta *) rtbase;
     rt_desc *desc_base = ((rt_desc *) rtbase);
+    page_init_debug("made it past cast\n");
+    page_init_debug_u64((u64) get_N(desc_base));
+    page_init_debug("\ncant make it here\n");
+    
+    if (get_N(desc_base) == 1) { //empty table, no mapping
+        page_init_debug("empty table, returning zero\n");
+        return 0;
+    }
+    page_init_debug("cant make it here\n");
 
     u32 start_idx = 1;
     u32 end_idx = get_N(desc_base) + 1; // +1 for exclusive [start,end) due to metacell
