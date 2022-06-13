@@ -23,6 +23,7 @@ void page_invalidate_flush();
 u64 physical_from_virtual(void *x);
 
 // these are used by init_mmu()
+void page_set_allowed_levels(u64 levelmask);
 void init_cell_initial_map(void *initial_map, range phys, u64 levelmask);
 void * allocate_permission_table(u64 * phys);
 
@@ -51,6 +52,7 @@ void remap_pages(u64 vaddr_new, u64 vaddr_old, u64 length);
 
 //physical map_with_complete(u64 v, physical p, u64 length, pageflags flags, status_handler complete);
 void dump_page_tables(u64 vaddr, u64 length);
+void dump_permission_table();
 
 
 #include <seccells_machine.h>

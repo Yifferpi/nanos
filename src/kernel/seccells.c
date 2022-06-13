@@ -21,6 +21,15 @@
 
 #define PAGEMEM_ALLOC_SIZE PAGESIZE_2M
 
+#ifdef KERNEL
+static struct spinlock pt_lock;
+#define pagetable_lock() u64 _savedflags = spin_lock_irq(&pt_lock)
+#define pagetable_unlock() spin_unlock_irq(&pt_lock, _savedflags)
+#else
+#define pagetable_lock()
+#define pagetable_unlock()
+#endif
+
 /* This function, given a pointer and a length, is supposed to populate
 the initial datastructure. M=1, and depending on the size different R and T */
 void init_permission_table(heap pageheap) {
@@ -57,18 +66,22 @@ static struct {
 } pagemem;
 
 //  this includes `page_set_allowed_levels()`
+void page_set_allowed_levels(u64 levelmask)
+{
+    pagemem.levelmask = levelmask;
+}
 void init_cell_initial_map(void *initial_map, range phys, u64 levelmask)
 {
-    //page_init_debug("init_page_initial_map: initial_map ");
-    //page_init_debug_u64(u64_from_pointer(initial_map));
-    //page_init_debug(", phys ");
-    //page_init_debug_u64(phys.start);
-    //page_init_debug(", length ");
-    //page_init_debug_u64(range_span(phys));
-    //page_init_debug("\n");
+    page_init_debug("init_page_initial_map: initial_map ");
+    page_init_debug_u64(u64_from_pointer(initial_map));
+    page_init_debug(", phys ");
+    page_init_debug_u64(phys.start);
+    page_init_debug(", length ");
+    page_init_debug_u64(range_span(phys));
+    page_init_debug("\n");
 
-    //spin_lock_init(&pt_lock);
-    pagemem.levelmask = levelmask;
+    spin_lock_init(&pt_lock);
+    //pagemem.levelmask = levelmask;
     pagemem.current_phys = phys;
     pagemem.pageheap = 0;
     pagemem.initial_map = initial_map;
@@ -82,6 +95,7 @@ memory is to be stored into the location 'phys'. */
 void * allocate_permission_table(u64 * phys) {
     if (bootstrapping) {
         /* Bootloader use: single, identity-mapped pages */
+        page_init_debug("Bootstrapping permission table\n");
         void *p = allocate_zero(pagemem.pageheap, PAGESIZE);
         *phys = u64_from_pointer(p);
         return p;
@@ -109,11 +123,10 @@ void * allocate_permission_table(u64 * phys) {
     page_init_debug("\n");
     zero(p, PAGESIZE);
     // Initialize datastructure:
-    rt_desc *tb = (rt_desc *) phys;
-    set_N(tb, 1);
-    set_M(tb, 1);
-    set_R(tb, 1);
-    set_T(tb, 12); // T needs to be set depending on the size of the permission table allocated here!
+    set_N((rt_desc *) p, 1);
+    set_M((rt_desc *) p, 1);
+    set_R((rt_desc *) p, 1);
+    set_T((rt_desc *) p, 12); // T needs to be set depending on the size of the permission table allocated here!
 
     return p;
     //return 0;
@@ -139,10 +152,11 @@ void update_flags() {
 cellflags * get_flagptr(rt_desc *base, u32 cell_idx, u32 sd_id) {
     u32 S = get_S(base); // the max number of cachelines reserved for descriptions
     u32 T = get_T(base); // the number of cache lines for permissions per SD
-
-    cellflags * perms = (cellflags *) (base + S/4 + sd_id*T); 
+    cellflags *perms = ((cellflags *) base) + S * 64 + sd_id * T * 64 + cell_idx;
+    //cellflags * perms = (cellflags *) (base + S/4 + sd_id*T); 
     // above: S/4 because we are stepping in size_of(rt_desc), not cachelines
-    return perms + cell_idx;
+    //return perms + cell_idx;
+    return perms;
 }
 
 // in a full-fletched implementation, `flags` would need to be an array of size M
@@ -153,13 +167,11 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     u64 base = get_permissiontable_base(v);
     #endif
     
-    page_init_debug(" in map func: \n");
-    page_init_debug_u64(base);
-    page_init_debug("\n");
     rt_desc * tb = (rt_desc *) base;
     u32 cell_id = cell_id_from_vaddr(v);
-    page_init_debug_u64((u64) cell_id);
-    page_init_debug("got cellid\n");
+    page_init_debug("map, called from ");
+    page_init_debug_u64(u64_from_pointer(__builtin_return_address(0)));
+    page_init_debug("\n");
     /*
     We need to check 4 cases:
     - Mapping not yet existent:     simply create the mapping
@@ -179,12 +191,25 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
     while (i < N && get_vbound(tb[i]) <= v) {
         i++;
     }
-
+    page_init_debug("New map:\n");
+    page_init_debug("physical:   ");
+    page_init_debug_u64(p);
+    page_init_debug("\n");
+    page_init_debug("virt base:  ");
+    page_init_debug_u64(v);
+    page_init_debug("\n");
+    page_init_debug("virt bound: ");
+    page_init_debug_u64(v+length);
+    page_init_debug("\n");
     rt_desc new_desc;
-    set_pbase(&new_desc, p);
-    set_vbase(&new_desc, v);
-    set_vbound(&new_desc, v+length);
-    cellflags new_flags = flags;
+    set_pbase(&new_desc, (p >> 12));
+    set_vbase(&new_desc, (v >> 12));
+    set_vbound(&new_desc, ((v+length) >> 12));
+    set_valid(&new_desc);
+    cellflags new_flags = cellflags_valid(flags);
+    page_init_debug("Cellflags: ");
+    page_init_debug_u64((u64)new_flags.w);
+    page_init_debug("\n");
         
     // loop fencepost
     rt_desc old_desc = tb[i];
@@ -208,6 +233,37 @@ physical map(u64 v, physical p, u64 length, cellflags flags) {
 
 void dump_page_tables(u64 vaddr, u64 length) {
     return;
+}
+void dump_permission_table() {
+
+    u64 base = get_permissiontable_base(0);
+    rt_desc * tb = (rt_desc *) base;
+    page_init_debug("\nMetacell\nN: ");
+    page_init_debug_u64((u64) get_N(tb));
+    page_init_debug("\nM:");
+    page_init_debug_u64((u64) get_M(tb));
+    page_init_debug("\nR:");
+    page_init_debug_u64((u64) get_R(tb));
+    page_init_debug("\nT:");
+    page_init_debug_u64((u64) get_T(tb));
+    page_init_debug("\n");
+    for (int i = 1; i < get_N(tb); i++) {
+        page_init_debug("Cell ");
+        page_init_debug_u64((u64) i);
+        page_init_debug(": ");
+        //u64 *cell = (u64 *)(tb + i);
+        page_init_debug("\npbase: ");
+        page_init_debug_u64(get_pbase(tb[i]));
+        page_init_debug("\nvbase: ");
+        page_init_debug_u64(get_vbase(tb[i]));
+        page_init_debug("\nvbound: ");
+        page_init_debug_u64(get_vbound(tb[i]));
+        page_init_debug("\n");
+        //page_init_debug_u64(*cell);
+        //page_init_debug_u64(*(cell+1));
+        //page_init_debug("\n");
+    }
+    page_init_debug("Dump finished\n") ;
 }
 
 void remap_pages(u64 vaddr_new, u64 vaddr_old, u64 length) {
@@ -258,19 +314,15 @@ u32 cell_id_from_vaddr(u64 vaddr) {
     u64 rtbase = get_permissiontable_base(vaddr);
     #endif
     page_init_debug("getting table base:\n");
-    //page_init_debug_u64(rtbase);
-    //page_init_debug("\n");
+    page_init_debug_u64(rtbase);
+    page_init_debug("\n");
     //rt_meta *meta = (rt_meta *) rtbase;
     rt_desc *desc_base = ((rt_desc *) rtbase);
-    page_init_debug("made it past cast\n");
-    page_init_debug_u64((u64) get_N(desc_base));
-    page_init_debug("\ncant make it here\n");
     
-    if (get_N(desc_base) == 1) { //empty table, no mapping
-        page_init_debug("empty table, returning zero\n");
-        return 0;
-    }
-    page_init_debug("cant make it here\n");
+    //if (get_N(desc_base) == 1) { //empty table, no mapping
+    //    page_init_debug("empty table, returning zero\n");
+    //    return 0;
+    //}
 
     u32 start_idx = 1;
     u32 end_idx = get_N(desc_base) + 1; // +1 for exclusive [start,end) due to metacell
@@ -278,10 +330,11 @@ u32 cell_id_from_vaddr(u64 vaddr) {
         u32 middle_idx = start_idx + ((end_idx-start_idx) / 2);
         u64 lo = get_vbase(desc_base[middle_idx]);
         u64 up = get_vbound(desc_base[middle_idx]);
-        if (vaddr > up) {
+        u64 addr = (vaddr >> 12);
+        if (addr > up) {
             /* Continue searching in upper half */
             start_idx = middle_idx + 1;
-        } else if (vaddr < lo) {
+        } else if (addr < lo) {
             /* Continue searching in lower half */
             end_idx = middle_idx;
         } else {

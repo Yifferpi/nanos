@@ -6,7 +6,7 @@
 #include <virtio/virtio.h>
 #include "serial.h"
 
-//#define INIT_DEBUG
+#define INIT_DEBUG
 #ifdef INIT_DEBUG
 #define init_debug early_debug
 #define init_debug_u64 early_debug_u64
@@ -152,6 +152,7 @@ static void __attribute__((noinline)) init_service_new_stack(void)
 
 void init_setup_stack(void)
 {
+    init_debug("made it to init_setupstack\n");
     serial_set_devbase(DEVICE_BASE);
     init_debug("in init_setup_stack, calling init_kernel_heaps\n");
     init_kernel_heaps();
@@ -180,7 +181,6 @@ void __attribute__((noreturn)) start(void *a0, void *dtb)
     init_debug("dtb:\n");
     init_dump(dtb, 0x100);
 #endif
-
     init_debug("calling init_mmu with target ");
     init_debug_u64(u64_from_pointer(init_mmu_target));
     init_debug("\n");

@@ -50,8 +50,8 @@ V   | Pbase     | Vbound     | Vbase
 */
 #define HALF_DESC_SHIFT 64
 typedef struct rt_desc {
-    u64     upper;
     u64     lower;
+    u64     upper;
 } rt_desc;
 
 /*
@@ -59,11 +59,12 @@ Meta field:
 N       | M         | T
 (96:64] | (64:32]   | (32:0]
 */
+/* ORDER OF FIELDS SENSITIVE! */
 typedef struct rt_meta {
-    u32     N;      // number of SecCells (including the metacell!)
-    u32     M;      // number of Security Divisions
-    u32     T;      // number of permission cache lines per SD
     u32     R;      // upper bound for number of Security Divisions
+    u32     T;      // number of permission cache lines per SD
+    u32     M;      // number of Security Divisions
+    u32     N;      // number of SecCells (including the metacell!)
     //      S;      // denotes number of cache lines reserved for Cells
     //      Q;      // denotes number of cache lines for permissions (total for all SDs)
 } rt_meta;
@@ -166,10 +167,15 @@ static inline void set_vbound(rt_desc *desc, u64 vbound) {
     int upper_bits = RT_VFN_SIZE - lower_bits - 1;
     u64 upper_mask = (1ull << (upper_bits+1)) - 1;
     u64 lower_mask = (1ull << (lower_bits+1)) - 1;
-    //u64 put_in_upper = (vbound >> lower_bits) & upper_mask;
-    //u64 put_in_lower = vbound & lower_mask;
     desc->upper = ((desc->upper & ~upper_mask) | ((vbound >> lower_bits) & upper_mask));
     desc->lower = (desc->lower & ~(lower_mask << RT_VA_END_SHIFT)) | ((vbound & lower_mask) << RT_VA_END_SHIFT);
+}
+
+static inline void set_valid(rt_desc *desc) {
+    desc->upper = desc->upper | (1ull << 63);
+}
+static inline u64 check_is_valid(rt_desc *desc) {
+    return (u64) ((desc->upper >> 63) & 1ull);
 }
     
 /* Meta field manipulation */
@@ -268,6 +274,10 @@ static inline cellflags cellflags_minpage(cellflags flags)
 static inline cellflags cellflags_default_user(void)
 {
     return cellflags_user(cellflags_minpage(cellflags_memory()));
+}
+static inline cellflags cellflags_valid(cellflags flags)
+{
+    return (cellflags){.w = flags.w | CELL_VALID};
 }
 // unclear: we don't have the RSW bits in Seccells
 //static inline cellflags cellflags_minpage(cellflags flags)
